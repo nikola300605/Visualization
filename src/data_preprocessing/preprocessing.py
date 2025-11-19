@@ -1,8 +1,61 @@
 import pathlib
 import pandas as pd
+from thefuzz import process
+import pycountry
+
+# Manual mappings for country names that do not match pycountry entries
+manual_iso3 = {
+    "BAHAMAS, THE": "BHS",
+    "BOLIVIA": "BOL",
+    "BRUNEI": "BRN",
+    "BURMA": "MMR",  # Myanmar
+
+    "CONGO, DEMOCRATIC REPUBLIC OF THE": "COD",
+    "CONGO, REPUBLIC OF THE": "COG",
+
+    "CURACAO": "CUW",
+    "FALKLAND ISLANDS (ISLAS MALVINAS)": "FLK",
+    "FRENCH SOUTHERN AND ANTARCTIC LANDS": "ATF",
+
+    "GAMBIA, THE": "GMB",
+    "GAZA STRIP": "PSE",  # State of Palestine
+    "HOLY SEE (VATICAN CITY)": "VAT",
+    "IRAN": "IRN",
+
+    "JAN MAYEN": "SJM",   # combined with Svalbard (SJM)
+    "KOREA, NORTH": "PRK",
+    "KOREA, SOUTH": "KOR",
+    "KOSOVO": "XKX",      # not official ISO, but widely used
+
+    "LAOS": "LAO",
+    "MACAU": "MAC",
+    "MOLDOVA": "MDA",
+    "PITCAIRN ISLANDS": "PCN",
+    "RUSSIA": "RUS",
+
+    "SAINT BARTHELEMY": "BLM",
+    "SAINT HELENA, ASCENSION, AND TRISTAN DA CUNHA": "SHN",
+    "SAINT MARTIN": "MAF",
+    "SINT MAARTEN": "SXM",
+
+    "SOUTH GEORGIA AND SOUTH SANDWICH ISLANDS": "SGS",
+    "SVALBARD": "SJM",  # combined with Jan Mayen (SJM)
+    "SYRIA": "SYR",
+    "TAIWAN": "TWN",
+    "TANZANIA": "TZA",
+    "TURKEY (TURKIYE)": "TUR",
+
+    "VENEZUELA": "VEN",
+    "VIETNAM": "VNM",
+    "VIRGIN ISLANDS": "VIR",  # U.S. Virgin Islands
+    "WEST BANK": "PSE",
+}
+
+# Precompute list of country names for fuzzy matching
+country_list = [country.name for country in pycountry.countries]
 
 #Load all CSV files from the data directory into a dictionary of DataFrames
-def load_data(directory_path):
+def load_data(directory_path =  pathlib.Path(__file__).parent.parent.parent/'data') -> dict[str, pd.DataFrame]:
     """
     Load all CSV files from the data directory into a dictionary of DataFrames.
 
@@ -22,7 +75,7 @@ def load_data(directory_path):
     return data_dict
 
 
-def merge_data(data_dict, key='Country'):
+def merge_data(data_dict: dict[str, pd.DataFrame], key='Country') -> pd.DataFrame:
     """
     Merge multiple DataFrames in the data dictionary on a common key.
 
@@ -49,7 +102,68 @@ def get_value(df, row, col):
     """
     return df.iloc[row, col]
 
-def analyse_distribution(df):
+def get_ISO3(name: str, manual_iso3: dict=manual_iso3, country_list: list=country_list) -> str | None:
+    """
+    Get the ISO3 country code for a given country name.
+    Uses manual mappings and fuzzy matching for names not directly found.
+
+    @param name: Country name to look up.
+    @return: ISO3 country code or None if not found.
+    """
+
+    if pd.isna(name):
+        return None
+    
+    if name in manual_iso3:
+        return manual_iso3[name]
+    
+    # Try direct pycountry lookup (handles many aliases / codes)
+    try:
+        country = pycountry.countries.lookup(str(name).strip())
+        return getattr(country, "alpha_3", None)
+    except (LookupError, KeyError):
+        pass
+
+    match, score = process.extractOne(name, country_list)
+    if score > 80:
+        return pycountry.countries.get(name=match).alpha_3
+    else:
+        return None
+
+
+
+def clean_country_names(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Cleans and formats country names and adds ISO3 codes to the DataFrame.
+    Deletes countries/territories that cannot be matched to ISO3 codes.
+    Also adds countries which are not in the original data but have ISO3 codes (for map completness).
+
+    @param df: DataFrame containing country names.
+    @param column: Column name with country names to clean.
+    @return: DataFrame with cleaned country names.
+    """
+    df['ISO3'] = df['Country'].apply(get_ISO3)
+
+    df['Country'] = df['Country'].str.strip().str.title()
+
+    existing = set(df["Country"].str.strip().str.upper())
+    iso_countries = {c.name.upper(): c.alpha_3 for c in pycountry.countries}
+
+    missing = [name for name in iso_countries.keys() if name not in existing]
+    missing_rows = pd.DataFrame({
+        "Country": missing,
+        "ISO3": [iso_countries[name] for name in missing]
+    })
+
+    for col in df.columns:
+        if col not in missing_rows.columns:
+            missing_rows[col] = pd.NA
+    
+    df = pd.concat([df, missing_rows], ignore_index=True)
+
+    return df
+
+def analyse_distribution(df: pd.DataFrame):
 
     """
     Analyse the distribution of values in each column of the DataFrame.
@@ -78,14 +192,18 @@ def analyse_distribution(df):
 
 
 
-csv_path = pathlib.Path(__file__).parent.parent.parent/'data'
-data_dict = load_data(csv_path)
+
+data_dict = load_data()
 merged_data = merge_data(data_dict)
 
-distribution_info = analyse_distribution(merged_data)
-""" for type, info in distribution_info.items():
+""" distribution_info = analyse_distribution(merged_data)
+for type, info in distribution_info.items():
     print(f"{type}, \n {info}") """
 
-print(merged_data.shape)
+merged_data = clean_country_names(merged_data)
+
+
+
+print(merged_data.head())
 
 
