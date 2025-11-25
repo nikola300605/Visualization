@@ -2,57 +2,13 @@ import pathlib
 import pandas as pd
 from thefuzz import process
 import pycountry
-
+from src.data_preprocessing.mappings import country_map
 # Manual mappings for country names that do not match pycountry entries
-manual_iso3 = {
-    "BAHAMAS, THE": "BHS",
-    "BOLIVIA": "BOL",
-    "BRUNEI": "BRN",
-    "BURMA": "MMR",  # Myanmar
-
-    "CONGO, DEMOCRATIC REPUBLIC OF THE": "COD",
-    "CONGO, REPUBLIC OF THE": "COG",
-
-    "CURACAO": "CUW",
-    "FALKLAND ISLANDS (ISLAS MALVINAS)": "FLK",
-    "FRENCH SOUTHERN AND ANTARCTIC LANDS": "ATF",
-
-    "GAMBIA, THE": "GMB",
-    "GAZA STRIP": "PSE",  # State of Palestine
-    "HOLY SEE (VATICAN CITY)": "VAT",
-    "IRAN": "IRN",
-
-    "JAN MAYEN": "SJM",   # combined with Svalbard (SJM)
-    "KOREA, NORTH": "PRK",
-    "KOREA, SOUTH": "KOR",
-    "KOSOVO": "XKX",      # not official ISO, but widely used
-
-    "LAOS": "LAO",
-    "MACAU": "MAC",
-    "MOLDOVA": "MDA",
-    "PITCAIRN ISLANDS": "PCN",
-    "RUSSIA": "RUS",
-
-    "SAINT BARTHELEMY": "BLM",
-    "SAINT HELENA, ASCENSION, AND TRISTAN DA CUNHA": "SHN",
-    "SAINT MARTIN": "MAF",
-    "SINT MAARTEN": "SXM",
-
-    "SOUTH GEORGIA AND SOUTH SANDWICH ISLANDS": "SGS",
-    "SVALBARD": "SJM",  # combined with Jan Mayen (SJM)
-    "SYRIA": "SYR",
-    "TAIWAN": "TWN",
-    "TANZANIA": "TZA",
-    "TURKEY (TURKIYE)": "TUR",
-
-    "VENEZUELA": "VEN",
-    "VIETNAM": "VNM",
-    "VIRGIN ISLANDS": "VIR",  # U.S. Virgin Islands
-    "WEST BANK": "PSE",
-}
 
 # Precompute list of country names for fuzzy matching
-country_list = [country.name for country in pycountry.countries]
+country_list = []
+for c in pycountry.countries:
+    country_list.append(c.name)
 
 #Load all CSV files from the data directory into a dictionary of DataFrames
 def load_data(directory_path =  pathlib.Path(__file__).parent.parent.parent/'data') -> dict[str, pd.DataFrame]:
@@ -74,6 +30,8 @@ def load_data(directory_path =  pathlib.Path(__file__).parent.parent.parent/'dat
 
     return data_dict
 
+def clean_and_format_economy_data(economy_df: pd.DataFrame) -> pd.DataFrame:
+    pass
 
 def merge_data(data_dict: dict[str, pd.DataFrame], key='Country') -> pd.DataFrame:
     """
@@ -102,7 +60,7 @@ def get_value(df, row, col):
     """
     return df.iloc[row, col]
 
-def get_ISO3(name: str, manual_iso3: dict=manual_iso3, country_list: list=country_list) -> str | None:
+def get_ISO3(name: str, country_list: list=country_list) -> str | None:
     """
     Get the ISO3 country code for a given country name.
     Uses manual mappings and fuzzy matching for names not directly found.
@@ -114,21 +72,17 @@ def get_ISO3(name: str, manual_iso3: dict=manual_iso3, country_list: list=countr
     if pd.isna(name):
         return None
     
-    if name in manual_iso3:
-        return manual_iso3[name]
-    
-    # Try direct pycountry lookup (handles many aliases / codes)
-    try:
-        country = pycountry.countries.lookup(str(name).strip())
-        return getattr(country, "alpha_3", None)
-    except (LookupError, KeyError):
-        pass
+    name = str(name).strip()
+    match, score = process.extractOne(name, country_list) 
 
-    match, score = process.extractOne(name, country_list)
-    if score > 80:
-        return pycountry.countries.get(name=match).alpha_3
-    else:
+    if score < 88:  # safer high threshold
         return None
+
+    country = pycountry.countries.get(name=match)
+    if country is None:
+        return None
+
+    return country.alpha_3
 
 
 
@@ -140,26 +94,41 @@ def clean_country_names(df: pd.DataFrame) -> pd.DataFrame:
 
     @param df: DataFrame containing country names.
     @param column: Column name with country names to clean.
-    @return: DataFrame with cleaned country names.
+    @return: Tuple of DataFrames, where first is the full merged dataframe, and second is the dataframe with countries with no data.
     """
-    df['ISO3'] = df['Country'].apply(get_ISO3)
+    
+    df["Country"] = df["Country"].map(country_map).fillna(df["Country"])
+    df["Country"] = df["Country"].astype(str).str.strip()
 
-    df['Country'] = df['Country'].str.strip().str.title()
-
-    existing = set(df["Country"].str.strip().str.upper())
-    iso_countries = {c.name.upper(): c.alpha_3 for c in pycountry.countries}
-
-    missing = [name for name in iso_countries.keys() if name not in existing]
-    missing_rows = pd.DataFrame({
-        "Country": missing,
-        "ISO3": [iso_countries[name] for name in missing]
+    df["Country"] = df["Country"].replace({
+    "Gaza Strip": "Palestine, State of",
+    "West Bank": "Palestine, State of"
     })
+    agg_rules = {}
 
     for col in df.columns:
-        if col not in missing_rows.columns:
-            missing_rows[col] = pd.NA
-    
-    df = pd.concat([df, missing_rows], ignore_index=True)
+        if col == "Country":
+            agg_rules[col] = "first"
+        else:
+            # Use numeric mean where possible
+            if pd.api.types.is_numeric_dtype(df[col]):
+                agg_rules[col] = "mean"  # or "sum" if you prefer
+            else:
+                agg_rules[col] = "first"
+
+    # Group the dataset
+    df = df.groupby("Country", as_index=False).agg(agg_rules)
+
+    #Add missing countries with ISO3 codes but no data
+    all_countries = list(set(country_list))  # deduplicate if you added official_name
+    existing_countries = df["Country"].tolist()
+
+    missing_countries = [c for c in all_countries if c not in existing_countries]
+
+    missing_data = pd.DataFrame({"Country": missing_countries})
+    df = pd.concat([df, missing_data], ignore_index=True)
+
+    df['ISO3'] = df['Country'].apply(get_ISO3)
 
     return df
 
@@ -202,8 +171,12 @@ for type, info in distribution_info.items():
 
 merged_data = clean_country_names(merged_data)
 
+cols_to_ignore = ["Country", "ISO3"]  
+mask = merged_data.drop(columns=cols_to_ignore).isna().all(axis=1)
+
+only_nas = merged_data[mask]
+
+print(only_nas)
 
 
-print(merged_data.head())
-
-
+print(merged_data["Population_Growth_Rate"].nsmallest(10))
