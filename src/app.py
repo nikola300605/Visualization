@@ -12,7 +12,6 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY, dbc.icons.FONT_AWE
 server = app.server
 
 
-
 app.layout = get_layout()
 if __name__ == "__main__":
     app.run(debug=True)
