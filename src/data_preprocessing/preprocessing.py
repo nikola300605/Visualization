@@ -3,6 +3,8 @@ import pandas as pd
 from thefuzz import process
 import pycountry
 from src.data_preprocessing.mappings import country_map
+import re
+import numpy as np
 # Manual mappings for country names that do not match pycountry entries
 
 # Precompute list of country names for fuzzy matching
@@ -30,8 +32,223 @@ def load_data(directory_path =  pathlib.Path(__file__).parent.parent.parent/'dat
 
     return data_dict
 
+#region Cleaning functions for specific datasets
+
+#region helpers for cleaning geo data
+def _dms_to_decimal(deg: float, minutes: float, hemi: str) -> float:
+    """convert degrees + minutes + hemisphere to signed decimal degrees."""
+    sign = -1 if hemi.upper() in ("S", "W") else 1
+    return sign * (float(deg) + float(minutes) / 60.0)
+
+
+def _parse_one_coord(token: str):
+    """
+    Parse a single coordinate like '34 00 N'
+    Returns decimal degrees or pd.NA on failure
+    """
+    if pd.isna(token):
+        return pd.NA
+
+    bits = str(token).strip().replace("°", "").split()
+    if len(bits) < 2:
+        return pd.NA
+
+    hemi = bits[-1].upper()
+    nums = bits[:-1]
+
+    try:
+        if len(nums) == 2:
+            deg, minutes = nums
+        elif len(nums) == 1:
+            deg, minutes = nums[0], 0
+        else:
+            #sometimes we might get deg, min, sec. just ignore sec?
+            deg, minutes = nums[0], nums[1]
+
+        return _dms_to_decimal(float(deg), float(minutes), hemi)
+    except (ValueError, TypeError):
+        return pd.NA
+
+
+def _parse_geographic_coordinates(s: str):
+    """
+    Make '34 00 N, 62 00 E' to (lat_dd, lon_dd).
+    Returns (pd.NA, pd.NA) on failure.
+    """
+    if pd.isna(s):
+        return pd.NA, pd.NA
+
+    parts = [p.strip() for p in str(s).split(",")]
+    if len(parts) != 2:
+        return pd.NA, pd.NA
+
+    lat_token, lon_token = parts
+    lat = _parse_one_coord(lat_token)
+    lon = _parse_one_coord(lon_token)
+    return lat, lon
+
+
+def _parse_km_value(value):
+    """
+    Parse strings like '652,230 sq km', '5,987 km', '14.2 million sq km'
+    into a numeric value in km or sq km (we don't know which; caller
+    knows from context)
+    """
+    if pd.isna(value):
+        return pd.NA
+
+    s = str(value).strip().lower()
+    if s in ("", "na", "n/a", "-", "none"):
+        return pd.NA
+
+    factor = 1.0
+    if "million" in s:
+        factor = 1_000_000.0
+
+    #keep only digits, minus, and decimal point
+    num_str = re.sub(r"[^0-9\.\-]", "", s)
+    if num_str == "":
+        return pd.NA
+
+    try:
+        return float(num_str) * factor
+    except ValueError:
+        return pd.NA
+
+
+def _parse_percent_value(value):
+    """
+    Parse '12.3%' to 12.3
+    """
+    if pd.isna(value):
+        return pd.NA
+
+    s = str(value).strip()
+    if s in ("", "na", "n/a", "-", "none"):
+        return pd.NA
+
+    s = s.replace("%", "").replace(",", "")
+    try:
+        return float(s)
+    except ValueError:
+        return pd.NA
+#endregion
+
+def clean_geography_data(geography_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean the geography_data.csv df
+
+    - split Geographic_Coordinates into numeric Latitude / Longitude
+    - convert all 'sq km' and 'km' columns to numeric and append '_sq_km' / '_km' to names
+    - convert all percentage columns to numeric and append '_%' to names.
+    - not doing anything about missing values
+    """
+    df = geography_df.copy()
+
+    # Geographic coordinates to Latitude / Longitude columns
+    coord_col_candidates = [c for c in df.columns if "coord" in c.lower()]
+    if coord_col_candidates:
+        coord_col = coord_col_candidates[0]
+        lats, lons = zip(*df[coord_col].apply(_parse_geographic_coordinates))
+        df["Latitude"] = pd.to_numeric(pd.Series(lats), errors="coerce")
+        df["Longitude"] = pd.to_numeric(pd.Series(lons), errors="coerce")
+        # keep original coord column for reference mby?
+
+    # Detect km / sq km / % columns and transform
+    for col in list(df.columns):
+        if not pd.api.types.is_object_dtype(df[col]):
+            continue
+
+        sample_values = df[col].dropna().astype(str).head(30).str.lower().tolist()
+        sample_text = " ".join(sample_values)
+
+        #% columns
+        if "%" in sample_text:
+            new_col_name = f"{col}_%"
+            df[new_col_name] = df[col].apply(_parse_percent_value)
+            df.drop(columns=[col], inplace=True)
+            continue
+
+        #sq km columns
+        if "sq km" in sample_text:
+            new_col_name = f"{col}_sq_km"
+            df[new_col_name] = df[col].apply(_parse_km_value)
+            df.drop(columns=[col], inplace=True)
+            continue
+
+        #km columns (not sq km)
+        if " km" in sample_text or sample_text.endswith("km"):
+            new_col_name = f"{col}_km"
+            df[new_col_name] = df[col].apply(_parse_km_value)
+            df.drop(columns=[col], inplace=True)
+            continue
+
+    return df
+
+def clean_government_data(gov_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean the government/political dataset minimally.
+    Parse Capital_Coordinates into numeric Capital_Latitude and Capital_Longitude.
+    """
+    df = gov_df.copy()
+
+    #parse coordinates (use geo helpers)
+    coord_cols = [c for c in df.columns if "coord" in c.lower()]
+    if coord_cols:
+        coord_col = coord_cols[0]
+
+        lats, lons = zip(*df[coord_col].apply(_parse_geographic_coordinates))
+        df["Capital_Latitude"] = pd.to_numeric(pd.Series(lats), errors="coerce")
+        df["Capital_Longitude"] = pd.to_numeric(pd.Series(lons), errors="coerce")
+
+    return df
+
+#region helpers for cleaning transportation data
+def _parse_numeric(value):
+    """
+    Convert values like '58,000', '  1200 ', '-', '' to numeric or NaN.
+    """
+    if pd.isna(value):
+        return np.nan
+    
+    s = str(value).strip().lower()
+    if s in ("", "na", "n/a", "-", "none", "null"):
+        return np.nan
+    
+    # Remove commas, spaces, and other non-numeric characters
+    s = re.sub(r"[^0-9\.\-]", "", s)
+    if s == "":
+        return np.nan
+
+    try:
+        return float(s)
+    except ValueError:
+        return np.nan
+#endregion
+
+def clean_transportation_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean transportation_data.csv.
+    - Convert all numeric columns to float
+    - Replace missing numerical values with NaN
+    """
+    clean_df = df.copy()
+
+    numeric_columns = [
+        col for col in clean_df.columns 
+        if col.lower() != "country"
+    ]
+
+    for col in numeric_columns:
+        clean_df[col] = clean_df[col].apply(_parse_numeric)
+        clean_df[col] = clean_df[col].astype("Float64")  #pandas nullable float
+
+    return clean_df
+
 def clean_and_format_economy_data(economy_df: pd.DataFrame) -> pd.DataFrame:
     pass
+
+#endregion
 
 def merge_data(data_dict: dict[str, pd.DataFrame], key='Country') -> pd.DataFrame:
     """
@@ -163,6 +380,14 @@ def analyse_distribution(df: pd.DataFrame):
 
 
 data_dict = load_data()
+print("Loaded datasets:", list(data_dict.keys()))
+
+#cleaned datasets
+data_dict["geography_data"] = clean_geography_data(data_dict["geography_data"])
+data_dict["government_and_civics_data"] = clean_government_data(data_dict["government_and_civics_data"])
+data_dict["transportation_data"] = clean_transportation_data(data_dict["transportation_data"])
+
+
 merged_data = merge_data(data_dict)
 
 """ distribution_info = analyse_distribution(merged_data)
