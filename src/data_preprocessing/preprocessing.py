@@ -314,7 +314,7 @@ def clean_country_names(df: pd.DataFrame) -> pd.DataFrame:
     @return: Tuple of DataFrames, where first is the full merged dataframe, and second is the dataframe with countries with no data.
     """
     
-    df["Country"] = df["Country"].map(country_map).fillna(df["Country"])
+    df["Country"] = df["Country"].map(country_map).dropna()
     df["Country"] = df["Country"].astype(str).str.strip()
 
     df["Country"] = df["Country"].replace({
@@ -380,7 +380,6 @@ def analyse_distribution(df: pd.DataFrame):
 
 
 data_dict = load_data()
-print("Loaded datasets:", list(data_dict.keys()))
 
 #cleaned datasets
 data_dict["geography_data"] = clean_geography_data(data_dict["geography_data"])
@@ -401,7 +400,3 @@ mask = merged_data.drop(columns=cols_to_ignore).isna().all(axis=1)
 
 only_nas = merged_data[mask]
 
-print(only_nas)
-
-
-print(merged_data["Population_Growth_Rate"].nsmallest(10))

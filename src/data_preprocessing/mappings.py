@@ -28,6 +28,11 @@ manual_name_map = {
     'TANZANIA': 'Tanzania, United Republic of',
     'UNITED STATES': 'United States',
     'VIETNAM': 'Viet Nam',
+    'ARCTIC OCEAN': None,
+    'ANTARCTICA': None,
+    'INDIAN OCEAN': None,
+    'ATLANTIC OCEAN': None,
+    'PACIFIC OCEAN': None,
     # Add more known alias mappings as needed
 }
 
@@ -62,4 +67,4 @@ for name in country_names:
     else:
         country_map[name] = None
 
-print(country_map)
+#print(country_map)

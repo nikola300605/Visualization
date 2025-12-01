@@ -1,6 +1,6 @@
 # I'll try to make the interactive chlorplet map here
 import pandas as pd
-from dash import Dash, html, dcc, Input, Output, State
+from dash import Dash, html, dcc, Input, Output, State, callback
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
@@ -9,7 +9,7 @@ from dash_bootstrap_templates import load_figure_template
 
 load_figure_template("darkly")
 
-def generate_choropleth():
+def generate_choropleth() -> go.Figure:
 
     df = load_data()
     df = merge_data(df)
@@ -58,6 +58,7 @@ def generate_choropleth():
     )
 
     return fig
+
 
 
 

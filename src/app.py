@@ -6,7 +6,7 @@ from dash_bootstrap_templates import load_figure_template
 
 load_figure_template("darkly"),
 dbc_css = ("https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates@V1.0.2/dbc.min.css")
-app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, dbc.icons.FONT_AWESOME, dbc_css])
+app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, dbc.icons.FONT_AWESOME, dbc_css], suppress_callback_exceptions=True)
 
 
 server = app.server
