@@ -45,7 +45,33 @@ def views_content():
     )
 
 def filter_content():
-    pass
+    return dbc.Container(
+        dbc.Row(
+            [
+                dbc.Col(
+                    [   
+                    dbc.Label("Select Region:", html_for="region-filter-dropdown", className="form-label"),
+                    dcc.Dropdown(
+                        options = [
+                            {'label': 'All Regions', 'value': 'all'},
+                            {'label': 'Europe', 'value': 'europe'},
+                            {'label': 'Asia', 'value': 'asia'},
+                            {'label': 'Africa', 'value': 'africa'},
+                            {'label': 'North America', 'value': 'north_america'},
+                            {'label': 'South America', 'value': 'south_america'},
+                            {'label': 'Oceania', 'value': 'oceania'},
+                            {'label': 'Antarctica', 'value': 'antarctica'},
+                        ],
+                        id = "region-filter-dropdown",
+                        className="dbc"
+                    )
+                    ],
+                    width=4
+                ),
+
+            ]
+        )
+    )
 
 
 @callback(
@@ -83,7 +109,7 @@ def update_views(selected_view):
         id="views-radioitems",
         options=[
             {"label": "Literacy Rate", "value": "Total_Literacy_Rate"},
-            {"label": "Youth Unemployment", "value": "Youth_Unemployment_Rate_percent"},
+            {"label": "Youth Unemployment", "value": "Youth_Unemployment_Rate"},
             {"label": "Median Age", "value": "Median_Age"},
         ],
         inline=True,

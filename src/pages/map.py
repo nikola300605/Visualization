@@ -57,9 +57,27 @@ def generate_choropleth() -> go.Figure:
         marker_line_width=0.8,
     )
 
+    """ fig.update_layout(
+        transition=dict(duration=100, easing="cubic-in-out")
+    ) """
+
     return fig
 
-
+def make_base_map() -> go.Figure:
+    fig = go.Figure()
+    fig.update_geos(
+        projection_type="natural earth",
+        fitbounds="locations",
+        visible=False,
+        showland=True,
+        landcolor="#151a22",
+    )
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="#111111",
+        geo_bgcolor="#111111",
+    )
+    return fig
 
 
 
