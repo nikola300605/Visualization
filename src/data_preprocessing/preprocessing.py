@@ -5,6 +5,7 @@ import pycountry
 from src.data_preprocessing.mappings import country_map
 import re
 import numpy as np
+from dateutil.parser import parse
 # Manual mappings for country names that do not match pycountry entries
 
 # Precompute list of country names for fuzzy matching
@@ -31,6 +32,9 @@ def load_data(directory_path =  pathlib.Path(__file__).parent.parent.parent/'dat
 
 
     return data_dict
+
+
+
 
 #region Cleaning functions for specific datasets
 
@@ -245,10 +249,81 @@ def clean_transportation_data(df: pd.DataFrame) -> pd.DataFrame:
 
     return clean_df
 
-def clean_and_format_economy_data(economy_df: pd.DataFrame) -> pd.DataFrame:
-    pass
+def _fiscal_year_to_md(fy_string):
+    """
+    Converts 'calendar year' or 'day Month - day Month'
+    to month-day strings like '01-01' and '12-31'.
+    No full dates. No year.
+    """
+    if pd.isna(fy_string):
+        return None, None
+
+    fy_string = str(fy_string).strip().lower()
+
+    if fy_string == "calendar year":
+        return "01-01", "12-31"
+
+    if "-" in fy_string:
+        part1, part2 = fy_string.split("-")
+        start_md = parse(part1.strip(), dayfirst=True)
+        end_md   = parse(part2.strip(), dayfirst=True)
+
+        start_str = f"{start_md.month:02d}-{start_md.day:02d}"
+        end_str   = f"{end_md.month:02d}-{end_md.day:02d}"
+
+        return start_str, end_str
+
+    return None, None
 
 #endregion
+
+def clean_economy_data(df_economy:pd.DataFrame) -> pd.DataFrame:
+    df_economy["Fiscal_Year_Start_Date"], df_economy["Fiscal_Year_End_Date"] = zip(
+    *df_economy["Fiscal_Year"].apply(_fiscal_year_to_md))
+
+    df_economy = df_economy.drop(columns=['Fiscal_Year'])
+
+    cols = list(df_economy.columns)
+
+    # find index of Public_Debt_percent_of_GDP
+    insert_at = cols.index("Public_Debt_percent_of_GDP") + 1
+
+    # remove the new columns from the end
+    cols.remove("Fiscal_Year_Start_Date")
+    cols.remove("Fiscal_Year_End_Date")
+
+    # insert them in correct order
+    cols[insert_at:insert_at] = ["Fiscal_Year_Start_Date", "Fiscal_Year_End_Date"]
+
+    # reorder dataframe
+    df_economy = df_economy[cols]
+
+    return df_economy
+
+
+def clean_demographics_data(df_demographics: pd.DataFrame) -> pd.DataFrame:
+    percent_cols = [
+    'Population_Growth_Rate',
+    'Total_Literacy_Rate',
+    'Male_Literacy_Rate',
+    'Female_Literacy_Rate',
+    'Youth_Unemployment_Rate'
+    ]
+
+    # Removing '%' 
+    for col in percent_cols:
+        if col in df_demographics.columns:
+            df_demographics[col] = (
+                df_demographics[col]
+                .astype(str)           
+                .str.replace('%', '', regex=False)  
+            )
+            df_demographics[col] = pd.to_numeric(df_demographics[col], errors='coerce')
+
+    rename_map = {col: f"{col} [%]" for col in percent_cols if col in df_demographics.columns}
+    df_demographics = df_demographics.rename(columns=rename_map)
+
+    return df_demographics
 
 def merge_data(data_dict: dict[str, pd.DataFrame], key='Country') -> pd.DataFrame:
     """
@@ -265,6 +340,7 @@ def merge_data(data_dict: dict[str, pd.DataFrame], key='Country') -> pd.DataFram
         else:
             merged_df = pd.merge(merged_df, df, on=key, how='outer')
     return merged_df
+
 
 ##### This is the parsing function we were asked for in assignment 1
 def get_value(df, row, col):
@@ -377,26 +453,22 @@ def analyse_distribution(df: pd.DataFrame):
 
 
 
-
-
 data_dict = load_data()
 
 #cleaned datasets
 data_dict["geography_data"] = clean_geography_data(data_dict["geography_data"])
 data_dict["government_and_civics_data"] = clean_government_data(data_dict["government_and_civics_data"])
 data_dict["transportation_data"] = clean_transportation_data(data_dict["transportation_data"])
+data_dict["demographics_data"] = clean_demographics_data(data_dict["demographics_data"])
+data_dict["economy_data"] = clean_economy_data(data_dict["economy_data"])
 
 
 merged_data = merge_data(data_dict)
 
-""" distribution_info = analyse_distribution(merged_data)
-for type, info in distribution_info.items():
-    print(f"{type}, \n {info}") """
-
+ 
 merged_data = clean_country_names(merged_data)
 
 cols_to_ignore = ["Country", "ISO3"]  
 mask = merged_data.drop(columns=cols_to_ignore).isna().all(axis=1)
 
 only_nas = merged_data[mask]
-

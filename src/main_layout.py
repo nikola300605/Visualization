@@ -8,11 +8,11 @@ from dash import Dash, html, dcc, Input, Output, State, clientside_callback, cal
 from src.pages.map import generate_choropleth, make_base_map
 from dash_bootstrap_templates import load_figure_template
 from src.pages.tabs import tab_layout
-from src.data_preprocessing.preprocessing import load_data, get_ISO3, clean_country_names, merge_data
+from src.data_loading.load_data import load_data_into_df
 
 load_figure_template("darkly")
 
-df = clean_country_names(merge_data(load_data()))
+df = load_data_into_df()
 cols_to_ignore = ["Country", "ISO3"]
 mask_empty = df.drop(columns=cols_to_ignore).isna().all(axis=1)
 df_empty = df[mask_empty]
@@ -21,9 +21,6 @@ df_nonempty = df[~mask_empty]
 fig_map = generate_choropleth()
 
 def get_layout():
-    data_dict = load_data()
-    df = merge_data(data_dict)
-    df = clean_country_names(df)
 
     #df = [{'label': country, 'value': iso3} for country, iso3 in zip(df['Country'], df['ISO3'])]
     return dbc.Container(
