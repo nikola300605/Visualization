@@ -2,7 +2,8 @@ import pathlib
 import pandas as pd
 from thefuzz import process
 import pycountry
-from src.data_preprocessing.mappings import country_map
+from mappings import country_map
+from regions import add_region_column
 import re
 import numpy as np
 # Manual mappings for country names that do not match pycountry entries
@@ -394,6 +395,13 @@ for type, info in distribution_info.items():
     print(f"{type}, \n {info}") """
 
 merged_data = clean_country_names(merged_data)
+
+# Add region column based on country
+merged_data = add_region_column(merged_data)
+
+for col in merged_data.columns:
+    print(col, " - ", merged_data[col].dtype)
+
 
 cols_to_ignore = ["Country", "ISO3"]  
 mask = merged_data.drop(columns=cols_to_ignore).isna().all(axis=1)
