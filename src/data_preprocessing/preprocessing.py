@@ -2,8 +2,8 @@ import pathlib
 import pandas as pd
 from thefuzz import process
 import pycountry
-from mappings import country_map
-from regions import add_region_column
+from src.data_preprocessing.mappings import country_map
+from src.data_preprocessing.regions import add_region_column
 import re
 import numpy as np
 from dateutil.parser import parse
@@ -36,6 +36,22 @@ def load_data(directory_path =  pathlib.Path(__file__).parent.parent.parent/'dat
 
 
 
+def load_external_data() -> dict[str, pd.DataFrame]:
+    """
+    Loads external data that we incorporated (so not the cia one) into a dict of DataFrames.
+
+    @return DataFrame containing the data from the CSV file.
+    """
+    data_dict = dict()
+    directory_path = pathlib.Path(__file__).parent.parent.parent/'external_data'
+    for file in directory_path.glob('*.csv'):
+        key = file.stem
+        path_to_file = directory_path / file.name
+        df = pd.read_csv(path_to_file)
+        data_dict[key] = df
+
+    return data_dict
+        
 
 #region Cleaning functions for specific datasets
 
@@ -279,6 +295,10 @@ def _fiscal_year_to_md(fy_string):
 #endregion
 
 def clean_economy_data(df_economy:pd.DataFrame) -> pd.DataFrame:
+    # If 'Fiscal_Year' is not present, assume data is already cleaned/processed
+    if "Fiscal_Year" not in df_economy.columns:
+        return df_economy
+
     df_economy["Fiscal_Year_Start_Date"], df_economy["Fiscal_Year_End_Date"] = zip(
     *df_economy["Fiscal_Year"].apply(_fiscal_year_to_md))
 
@@ -286,8 +306,11 @@ def clean_economy_data(df_economy:pd.DataFrame) -> pd.DataFrame:
 
     cols = list(df_economy.columns)
 
-    # find index of Public_Debt_percent_of_GDP
-    insert_at = cols.index("Public_Debt_percent_of_GDP") + 1
+    # find index of Public_Debt_percent_of_GDP if present, otherwise append at end
+    if "Public_Debt_percent_of_GDP" in cols:
+        insert_at = cols.index("Public_Debt_percent_of_GDP") + 1
+    else:
+        insert_at = len(cols)
 
     # remove the new columns from the end
     cols.remove("Fiscal_Year_Start_Date")
@@ -454,7 +477,7 @@ def analyse_distribution(df: pd.DataFrame):
 
 
 
-data_dict = load_data()
+""" data_dict = load_data()
 
 #cleaned datasets
 data_dict["geography_data"] = clean_geography_data(data_dict["geography_data"])
@@ -479,4 +502,4 @@ for col in merged_data.columns:
 cols_to_ignore = ["Country", "ISO3"]  
 mask = merged_data.drop(columns=cols_to_ignore).isna().all(axis=1)
 
-only_nas = merged_data[mask]
+only_nas = merged_data[mask] """

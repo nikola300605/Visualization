@@ -108,8 +108,8 @@ def update_views(selected_view):
     development_buttons = dbc.RadioItems(
         id="views-radioitems",
         options=[
-            {"label": "Literacy Rate", "value": "Total_Literacy_Rate"},
-            {"label": "Youth Unemployment", "value": "Youth_Unemployment_Rate"},
+            {"label": "Literacy Rate", "value": "Total_Literacy_Rate [%]"},
+            {"label": "Youth Unemployment", "value": "Youth_Unemployment_Rate [%]"},
             {"label": "Median Age", "value": "Median_Age"},
         ],
         inline=True,
@@ -119,7 +119,7 @@ def update_views(selected_view):
         id="views-radioitems",
         options=[
             {"label": "Population Density", "value": "population_density"},
-            {"label": "Population Growth Rate", "value": "Population_Growth_Rate"},
+            {"label": "Population Growth Rate", "value": "Population_Growth_Rate [%]"},
             {"label": "Fertility Rate", "value": "Total_Fertility_Rate"},
             {"label": "Arable Land (% of total)", "value": "Arable_Land (%% of Total Agricultural Land)"},
         ],
