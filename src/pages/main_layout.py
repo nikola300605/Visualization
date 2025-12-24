@@ -18,6 +18,7 @@ def Navbar():
 def get_layout():
     return dbc.Container(
         [
+            dcc.Location(id="url", refresh=False),
             Navbar(),
             dash.page_container,   # <-- where pages render
         ],

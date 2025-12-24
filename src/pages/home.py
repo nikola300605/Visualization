@@ -3,6 +3,8 @@ import plotly.express as px
 import dash
 import dash_bootstrap_components as dbc
 from dash import html, dcc, callback, Input, Output
+import urllib.parse
+from dash.exceptions import PreventUpdate
 
 from src.components.map import generate_choropleth, make_base_map
 from src.components.tabs import tab_layout
@@ -67,3 +69,16 @@ def update_graph(selected_column):
 
     fig.update_layout(title=f"{selected_column.replace('_', ' ').title()} by Country")
     return fig
+
+
+@callback(Output("url", "href"), Input("graph", "clickData"))
+def go_to_country(clickData):
+    if not clickData:
+        raise PreventUpdate
+    pts = clickData.get("points", [])
+    if not pts:
+        raise PreventUpdate
+    iso3 = pts[0].get("location")
+    if not iso3:
+        raise PreventUpdate
+    return f"/country?iso3={urllib.parse.quote(str(iso3))}"
