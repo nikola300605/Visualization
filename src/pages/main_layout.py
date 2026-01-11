@@ -1,6 +1,7 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import html, dcc
+from dash import dcc
+
 
 def Navbar():
     pages = sorted(dash.page_registry.values(), key=lambda p: p.get("order", 0))
@@ -12,15 +13,16 @@ def Navbar():
         ],
         color="primary",
         dark=True,
-        class_name="mb-4"
+        class_name="mb-4",
     )
+
 
 def get_layout():
     return dbc.Container(
         [
-            dcc.Location(id="url", refresh=False),
+            dcc.Location(id="url", refresh="callback-nav"),
             Navbar(),
-            dash.page_container,   # <-- where pages render
+            dash.page_container,
         ],
-        fluid=True
+        fluid=True,
     )
