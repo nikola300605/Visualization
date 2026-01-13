@@ -1,0 +1,14 @@
+HDR:
+Adolescent Birth Rate (births per 1,000 women ages 15-19)
+Expected Years of Schooling (years)
+HDI Rank
+Human Development Index (value)
+Inequality-adjusted Human Development Index (value)
+Life Expectancy at Birth (years)
+
+WPP:
+Natural Change, Births minus Deaths (thousands)
+Rate of Natural Change (per 1,000 population)
+Population Growth Rate (percentage)
+Net Number of Migrants (thousands)
+Net Migration Rate (per 1,000 population)
