@@ -466,15 +466,15 @@ def update_views(selected_view):
             {"label": "Public Debt (Percent GDP)", "value": "Public_Debt_percent_of_GDP"},
         ],
         "development": [
-            {"label": "Human Development Index", "value": "Human Development Index (value)"},
+            {"label": "Human Development Index", "value": "Human_Development_Index_(value)"},
             {"label": "Literacy Rate", "value": "Total_Literacy_Rate [%]"},
             {"label": "Youth Unemployment", "value": "Youth_Unemployment_Rate [%]"},
             {"label": "Median Age", "value": "Median_Age"},
-            {"label": "Life Expectancy at Birth", "value": "Life Expectancy at Birth (years)"},
+            {"label": "Life Expectancy at Birth", "value": "Life_Expectancy_at_Birth_(years)"},
         ],
         "demographics": [
             {"label": "Population Density", "value": "population_density"},
-            {"label": "Population Growth Rate", "value": "Population Growth Rate (percentage)"},
+            {"label": "Population Growth Rate", "value": "Population_Growth_Rate_(percentage)"},
             {"label": "Fertility Rate", "value": "Total_Fertility_Rate"},
             {"label": "Arable Land (% of total)", "value": "Arable_Land (%% of Total Agricultural Land)_%"},
             {"label": "Irrigated Land (% of total agricultural)", "value": "irrigated_land_percent"},
