@@ -5,66 +5,29 @@ import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import plotly.io as pio
 from dash import Dash, html, dcc, Input, Output, State, clientside_callback, callback, Patch
+from src.pages.map import generate_choropleth
+from dash_bootstrap_templates import load_figure_template
 
-
-
-
+load_figure_template("darkly")
 
 
 def get_layout():
-    fig = px.scatter(
-                        x=np.random.randn(100),
-                        y=np.random.randn(100),
-                        title="Random Scatter Plot",
-                        template="flatly")
-
-    color_mode_switch =  html.Span(
-    [
-        dbc.Label(className="fa fa-moon", html_for="color-mode-switch"),
-        dbc.Switch( id="color-mode-switch", value=False, className="d-inline-block ms-1", persistence=True),
-        dbc.Label(className="fa fa-sun", html_for="color-mode-switch"),
-    ]
-    )
 
 
 
-
-    clientside_callback(
-        """
-        (switchOn) => {
-        document.documentElement.setAttribute('data-bs-theme', switchOn ? 'light' : 'dark');  
-        return window.dash_clientside.no_update
-        }
-        """,
-        Output("color-mode-switch", "id"),
-        Input("color-mode-switch", "value"),
-    ) 
-
-
-    @callback(
-        Output(component_id="graph", component_property="figure"),
-        Input(component_id="primary-button", component_property="n_clicks"),
-        State(component_id="checklist-col", component_property="value")
-    )
-
-    def update_graph(n_clicks, checklist_values):
-        new_fig = px.scatter(
-            x=np.random.randn(100),
-            y=np.random.randn(100),
-            title=f"Button clicked {n_clicks} times; Checklist: {', '.join(checklist_values)}",
-            template="flatly"
-        )
-        return new_fig
     
     return dbc.Container(
         [
-            color_mode_switch,
             dbc.Row([
                 dbc.Col(html.H1("Main Layout", className="text-center text-primary mb-4"), width=12),
                 dbc.Col(dcc.Graph(
                     id="graph",
-                    figure=fig
-                ), width=12),
+                    figure=generate_choropleth(),
+                    className="dbc"
+                ),
+                width=12,
+                className="mb-4"
+                ),
                 dbc.Col(
                     dcc.RangeSlider(
                         0, 20, 1,
