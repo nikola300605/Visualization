@@ -3,6 +3,7 @@ import plotly.express as px
 import dash
 import dash_bootstrap_components as dbc
 from dash import html, dcc, callback, Input, Output
+import urllib.parse
 
 from src.components.map import generate_choropleth, make_base_map
 from src.components.tabs import tab_layout
@@ -59,7 +60,23 @@ def update_graph(selected_column):
     return fig
 
 
-""" @Callback(
-    Output("graph", "figure"),
-    Input("")
-) """
+@callback(
+    Output("url", "pathname"),
+    Output("url", "search"),
+    Input("graph", "clickData"),
+    prevent_initial_call=True,
+)
+def go_to_country(clickData):
+    if not clickData:
+        return dash.no_update, dash.no_update
+
+    pts = clickData.get("points", [])
+    if not pts:
+        return dash.no_update, dash.no_update
+
+    iso3 = pts[0].get("location")
+    if not iso3:
+        return dash.no_update, dash.no_update
+
+    return "/country", f"?iso3={iso3}"
+
