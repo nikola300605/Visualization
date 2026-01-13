@@ -203,7 +203,8 @@ def clean_geography_data(geography_df: pd.DataFrame) -> pd.DataFrame:
             df[new_col_name] = df[col].apply(_parse_km_value)
             df.drop(columns=[col], inplace=True)
             continue
-
+    
+    df['Agricultural_Land_%'] = pd.to_numeric(df['Agricultural_Land_%'], errors='coerce')
     return df
 
 def clean_government_data(gov_df: pd.DataFrame) -> pd.DataFrame:
@@ -347,7 +348,15 @@ def clean_demographics_data(df_demographics: pd.DataFrame) -> pd.DataFrame:
     rename_map = {col: f"{col} [%]" for col in percent_cols if col in df_demographics.columns}
     df_demographics = df_demographics.rename(columns=rename_map)
 
+    df_demographics['Total_Population'] = pd.to_numeric(df_demographics['Total_Population'], errors='coerce')
+
     return df_demographics
+
+
+def clean_communications_data(df_communications: pd.DataFrame) -> pd.DataFrame:
+    df_communications['internet_users_total'] = pd.to_numeric(df_communications['internet_users_total'], errors='coerce')
+
+    return df_communications
 
 def merge_data(data_dict: dict[str, pd.DataFrame], key='Country') -> pd.DataFrame:
     """
@@ -377,6 +386,7 @@ def get_value(df, row, col):
     """
     return df.iloc[row, col]
 
+
 def get_ISO3(name: str, country_list: list=country_list) -> str | None:
     """
     Get the ISO3 country code for a given country name.
@@ -400,7 +410,6 @@ def get_ISO3(name: str, country_list: list=country_list) -> str | None:
         return None
 
     return country.alpha_3
-
 
 
 def clean_country_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -475,7 +484,53 @@ def analyse_distribution(df: pd.DataFrame):
             }
     return results
 
+def derive_new_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Deriving new metrics that are used.
 
+    @param df: DataFrame to derive new metrics from.
+    @return: DataFrame with new metrics added.
+    """
+
+    df['population_density'] = df['Total_Population'] / df['Area_Total_sq_km'].clip(lower=1)
+    df['internet_penetration_rate'] = (df['internet_users_total'] / df['Total_Population']) * 100
+    df['road_density'] = (df['roadways_km'] / df['Area_Total_sq_km'].replace(0, np.nan))
+    df['road_density_log'] = np.log10(
+    df['road_density'].replace(0, np.nan)
+    )
+    
+    df['broadband_fixed_subscriptions_rate'] = (df['broadband_fixed_subscriptions_total'] / df['Total_Population'].replace(0, np.nan)) * 100
+
+    agri_area = (
+    df['Agricultural_Land_%'] / 100 *
+    df['Area_Total_sq_km'].replace(0, np.nan)
+    )
+
+    df['irrigated_land_percent'] = (
+        df['Irrigated_Land_sq_km'] / agri_area.replace(0, np.nan)
+    ) * 100
+
+    df.loc[
+    df['irrigated_land_percent'] > 100,
+    'irrigated_land_percent'
+        ] = np.nan
+
+
+    df.loc[
+    df['internet_penetration_rate'] > 100,
+    'internet_penetration_rate'
+        ] = np.nan
+    
+    df.loc[
+    df['broadband_fixed_subscriptions_rate'] > 100,
+    'broadband_fixed_subscriptions_rate'
+        ] = np.nan
+
+    df.loc
+
+
+    return df
+    
 
 """ data_dict = load_data()
 

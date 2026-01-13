@@ -23,17 +23,7 @@ layout = dbc.Container(
         dbc.Col(dcc.Graph(id="graph", figure=fig_map, className="dbc"),
                 width=12, className="mb-4"),
 
-        dbc.Col(tab_layout(), width=8, className="mt-4"),
-
-        dbc.Col(
-            dcc.Dropdown(
-                id="country-dropdown",
-                options=[{"label": c, "value": c} for c in sorted(df["Country"].dropna().unique())],
-                className="dbc"
-            ),
-            width=4,
-            className="mt-4"
-        )
+        dbc.Col(tab_layout(), width=12, className="mt-4"),
     ]),
     fluid=True
 )
@@ -67,3 +57,9 @@ def update_graph(selected_column):
 
     fig.update_layout(title=f"{selected_column.replace('_', ' ').title()} by Country")
     return fig
+
+
+""" @Callback(
+    Output("graph", "figure"),
+    Input("")
+) """
