@@ -4,3 +4,33 @@ html, body {
     height: 100%;
     overflow-y: scroll;       /* Always show vertical scrollbar */
 }
+
+/* Fix Dash dropdown text colors for dark theme */
+.Select-control, 
+.Select-menu-outer, 
+.Select-option,
+.Select-value-label {
+    color: #000 !important;
+}
+
+/* Dropdown background */
+.Select-control {
+    background-color: #ffffff !important;
+}
+
+/* Dropdown list background */
+.Select-menu-outer {
+    background-color: #ffffff !important;
+}
+
+/* Highlighted option */
+.Select-option.is-focused {
+    background-color: #e6f2ff !important;
+    color: #000 !important;
+}
+
+/* Selected option */
+.Select-option.is-selected {
+    background-color: #b3d7ff !important;
+    color: #000 !important;
+}
