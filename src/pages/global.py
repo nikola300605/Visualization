@@ -54,6 +54,17 @@ LOWER_IS_BETTER = {
     "Death_Rate",
 }
 
+CORR_COLS = [
+    "Real_GDP_per_Capita_USD",
+    "Life_Expectancy_at_Birth_(years)",
+    "Total_Literacy_Rate [%]",
+    "Expected_Years_of_Schooling_(years)",
+    "Population_Below_Poverty_Line_percent",
+    "Infant_Mortality_Rate",
+    "Total_Fertility_Rate",
+    "Median_Age",
+]
+
 if not ECON_COLS:
     ECON_COLS = _numeric_cols(DF)
 if not SOCIAL_COLS:
@@ -62,7 +73,7 @@ if not SOCIAL_COLS:
 DEFAULT_X = "Real_GDP_per_Capita_USD"
 DEFAULT_Y = "Life_Expectancy_at_Birth_(years)"
 
-
+# Scatter plot function
 def build_scatter(
     df: pd.DataFrame,
     x_col: str,
@@ -197,6 +208,43 @@ def build_scatter(
 
     return fig
 
+#Heatmap function
+def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
+    data = df[cols].dropna()
+    corr = data.corr()
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=corr.values,
+            x=corr.columns,
+            y=corr.columns,
+            colorscale="RdBu",
+            zmid=0,
+            colorbar=dict(title="Correlation"),
+            hovertemplate=(
+                "<b>%{x}</b> vs <b>%{y}</b><br>"
+                "Correlation: %{z:.2f}<extra></extra>"
+            ),
+        )
+    )
+
+    fig.update_layout(
+        title=dict(
+            text="Correlation between development indicators",
+            font=dict(
+                size=22,
+                family="Arial",
+                color="white",
+            ),
+        ),
+        xaxis=dict(tickangle=45),
+        yaxis=dict(autorange="reversed"),
+        height=600,
+        margin=dict(l=80, r=20, t=60, b=80),
+    )
+
+    return fig
+
 layout = dbc.Container(
     [
         html.H2("Global analysis", className="mb-3"),
@@ -253,6 +301,13 @@ layout = dbc.Container(
             className="mb-3",
         ),
         dcc.Graph(id="global-scatter", config={"displayModeBar": True}),
+
+        html.Hr(),
+
+        dcc.Graph(
+            id="global-corr-heatmap",
+            figure=build_correlation_heatmap(DF, CORR_COLS),
+        ),
     ],
     fluid=True,
 )
