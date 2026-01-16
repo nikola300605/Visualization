@@ -13,7 +13,6 @@ DF = load_data_into_df()
 def _numeric_cols(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c != "Country" and pd.api.types.is_numeric_dtype(df[c])]
 
-
 ECON_COLS = [
     "Real_GDP_per_Capita_USD",
     "Real_GDP_PPP_billion_USD",
@@ -45,6 +44,23 @@ SOCIAL_COLS = [
     "Death_Rate",
 ]
 
+LEADERBOARD_METRICS = [
+    "Real_GDP_per_Capita_USD",
+    "Human_Development_Index_(value)",
+    "road_density_log",
+    "internet_penetration_rate",
+    "Life_Expectancy_at_Birth_(years)",
+    "Total_Literacy_Rate [%]",
+    "broadband_fixed_subscriptions_rate",
+]
+
+LOWER_IS_BETTER_LEADERBOARD = {
+    "Infant_Mortality_Rate",
+    "Unemployment_Rate_percent",
+    "Population_Below_Poverty_Line_percent",
+    "Death_Rate",
+}
+
 LOWER_IS_BETTER = {
     "Population_Below_Poverty_Line_percent",
     "Infant_Mortality_Rate",
@@ -72,8 +88,8 @@ if not SOCIAL_COLS:
 
 DEFAULT_X = "Real_GDP_per_Capita_USD"
 DEFAULT_Y = "Life_Expectancy_at_Birth_(years)"
+DEFAULT_LEADERBOARD_METRIC = "Real_GDP_per_Capita_USD"
 
-# Scatter plot function
 def build_scatter(
     df: pd.DataFrame,
     x_col: str,
@@ -85,7 +101,6 @@ def build_scatter(
     d = df[["Country", x_col, y_col]].copy()
     d = d.dropna(subset=[x_col, y_col])
 
-    # Avoid log(0) / log(negative)
     if use_log_x:
         d = d[d[x_col] > 0].copy()
         x_for_model = np.log(d[x_col].astype(float).values)
@@ -96,7 +111,6 @@ def build_scatter(
 
     y = d[y_col].astype(float).values
 
-    # Simple linear fit: y_hat = a + b*x
     b, a = np.polyfit(x_for_model, y, 1)
     y_hat = a + b * x_for_model
     resid = y - y_hat
@@ -105,12 +119,10 @@ def build_scatter(
     d["predicted"] = y_hat
     d["residual"] = resid
 
-    # Rank extremes
     d_sorted = d.sort_values("residual")
     under = d_sorted.head(top_n)
     over = d_sorted.tail(top_n)
 
-    # Base scatterplot (all points)
     fig = go.Figure()
 
     fig.add_trace(
@@ -131,9 +143,7 @@ def build_scatter(
         )
     )
 
-    # Regression line
     if show_reg_line:
-        # Build line across the observed x-range
         x_min, x_max = d[x_col].min(), d[x_col].max()
         x_line = np.linspace(x_min, x_max, 200)
 
@@ -154,7 +164,6 @@ def build_scatter(
             )
         )
 
-    # Highlight over/under as separate traces
     fig.add_trace(
         go.Scatter(
             x=under[x_col],
@@ -210,7 +219,6 @@ def build_scatter(
 
     return fig
 
-#Heatmap function
 def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
     data = df[cols].dropna()
     corr = data.corr()
@@ -246,13 +254,67 @@ def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
 
     return fig
 
+def build_global_ranking(df: pd.DataFrame, metric: str, top_n: int = 50, show_bottom: bool = False) -> go.Figure:
+    data = df[["Country", metric]].copy().dropna()
+    
+    if data.empty:
+        fig = go.Figure()
+        fig.add_annotation(text="No data available for selected metric", showarrow=False)
+        return fig
+    
+    values = data[metric].astype(float)
+    if metric in LOWER_IS_BETTER_LEADERBOARD:
+        values = -values
+    
+    data['Score'] = values
+    
+    min_val, max_val = data['Score'].min(), data['Score'].max()
+    if max_val > min_val:
+        data['Score'] = (data['Score'] - min_val) / (max_val - min_val) * 100
+    
+    if show_bottom:
+        ranking = data.sort_values('Score', ascending=True).reset_index(drop=True)  # Lowest first
+        title_suffix = f" BOTTOM {top_n}"
+        color_scale = 'Reds'  # Red for "bad" performance
+    else:
+        ranking = data.sort_values('Score', ascending=False).reset_index(drop=True)  # Highest first
+        title_suffix = f" TOP {top_n}"
+        color_scale = 'Viridis'  # Green for "good" performance
+    
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=ranking['Country'][:top_n],
+        x=ranking['Score'][:top_n],
+        orientation='h',
+        marker=dict(
+            color=ranking['Score'][:top_n], 
+            colorscale=color_scale, 
+            colorbar=dict(title="Score (0-100)")
+        ), 
+        text=ranking['Score'][:top_n].round(1),
+        textposition='auto',
+        hovertemplate='<b>%{y}</b><br>Score: %{x:.1f}<br>Raw: %{customdata:.2f}<extra></extra>',
+        customdata=ranking[metric][:top_n].round(2)
+    ))
+    
+    fig.update_layout(
+        title=f"🏆 {metric.replace('_', ' ').title()}{title_suffix} Countries",
+        yaxis_categoryorder='array', 
+        yaxis_categoryarray=ranking['Country'][:top_n].tolist(),
+        height=600, 
+        xaxis_title="Normalized Score (0-100)",
+        margin=dict(l=250, r=20, t=60, b=20),
+        font=dict(size=12)
+    )
+    
+    return fig
+
 layout = dbc.Container(
     [
         html.H1("Global analysis", className="mb-3"),
 
         dbc.Row(
             [
-                # Scatter + its controls
                 dbc.Col(
                     dbc.Card(
                         [
@@ -288,7 +350,6 @@ layout = dbc.Container(
                                         ],
                                         className="mb-2",
                                     ),
-
                                     dbc.Row(
                                         [
                                             dbc.Col(
@@ -319,7 +380,6 @@ layout = dbc.Container(
                                         ],
                                         className="mb-2",
                                     ),
-
                                     dcc.Graph(
                                         id="global-scatter",
                                         config={"displayModeBar": True},
@@ -333,7 +393,6 @@ layout = dbc.Container(
                     md=6,
                 ),
 
-                # Heatmap
                 dbc.Col(
                     dbc.Card(
                         [
@@ -353,11 +412,64 @@ layout = dbc.Container(
             ],
             className="mb-4",
         ),
+
+        dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Card(
+                        [
+                            dbc.CardHeader("🏆 Global Leaderboard"),
+                            dbc.CardBody([
+                                dbc.Row([
+                                    dbc.Col([
+                                        dbc.Label("Metric"),
+                                        dcc.Dropdown(
+                                            id="leaderboard-metric",
+                                            options=[{"label": m.replace('_', ' ').title(), "value": m} for m in LEADERBOARD_METRICS],
+                                            value=DEFAULT_LEADERBOARD_METRIC,
+                                            clearable=False,
+                                        ),
+                                    ], md=4),
+                                    dbc.Col([
+                                        dbc.Label("Top/Bottom N"),
+                                        dcc.Slider(
+                                            id="ranking-top-n",
+                                            min=20,
+                                            max=100,
+                                            step=10,
+                                            value=50,
+                                            marks={20: "20", 50: "50", 100: "100"},
+                                        ),
+                                    ], md=4),
+                                    dbc.Col([
+                                        dbc.Checklist(
+                                            id="show-bottom",
+                                            options=[{"label": "Show BOTTOM performers", "value": "bottom"}],
+                                            value=[],
+                                        ),
+                                    ], md=4),
+                                ], className="mb-3"),
+                                
+                                dcc.Graph(
+                                    id="global-ranking",
+                                    figure=build_global_ranking(DF, DEFAULT_LEADERBOARD_METRIC, 50),
+                                    style={"height": "600px"},
+                                    config={"displayModeBar": True},
+                                ),
+                            ])
+                        ],
+                        className="h-100",
+                    ),
+                    md=12,
+                ),
+            ],
+            className="mb-4",
+        ),
     ],
     fluid=True,
 )
 
-
+# Existing callbacks (unchanged)
 @callback(
     Output("global-scatter", "figure"),
     Input("global-x-col", "value"),
@@ -370,4 +482,11 @@ def update_global_scatter(x_col: str, y_col: str, options: list[str], top_n: int
     show_reg = "reg" in (options or [])
     return build_scatter(DF, x_col, y_col, use_log_x, show_reg, int(top_n))
 
-
+@callback(
+    Output("global-ranking", "figure"),
+    Input("leaderboard-metric", "value"),
+    Input("ranking-top-n", "value"),
+    Input("show-bottom", "value")
+)
+def update_global_ranking(metric: str, top_n: int, show_bottom: list):
+    return build_global_ranking(DF, metric, top_n, "bottom" in show_bottom)
