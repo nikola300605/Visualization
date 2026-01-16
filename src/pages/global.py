@@ -198,12 +198,14 @@ def build_scatter(
     )
 
     fig.update_layout(
-        title=f"{y_col} vs {x_col} (highlighting over/under-performance)",
+        title=dict(
+        text="Social vs Economic indicator",
+        font=dict(size=18),
+        x=0.5,),
         xaxis_title=x_col if not use_log_x else f"{x_col} (log used in model)",
         yaxis_title=y_col,
         legend_title="",
         margin=dict(l=10, r=10, t=55, b=10),
-        height=650,
     )
 
     return fig
@@ -239,7 +241,6 @@ def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
         ),
         xaxis=dict(tickangle=45),
         yaxis=dict(autorange="reversed"),
-        height=600,
         margin=dict(l=80, r=20, t=60, b=80),
     )
 
@@ -247,70 +248,115 @@ def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
 
 layout = dbc.Container(
     [
-        html.H2("Global analysis", className="mb-3"),
+        html.H1("Global analysis", className="mb-3"),
+
         dbc.Row(
             [
+                # Scatter + its controls
                 dbc.Col(
-                    [
-                        dbc.Label("Economic indicator (X)"),
-                        dcc.Dropdown(
-                            id="global-x-col",
-                            options=[{"label": c, "value": c} for c in ECON_COLS],
-                            value=DEFAULT_X,
-                            clearable=False,
-                        ),
-                    ],
-                    md=4,
+                    dbc.Card(
+                        [
+                            dbc.CardHeader("Performance vs expected outcome"),
+                            dbc.CardBody(
+                                [
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                [
+                                                    dbc.Label("Economic indicator (X)"),
+                                                    dcc.Dropdown(
+                                                        id="global-x-col",
+                                                        options=[{"label": c, "value": c} for c in ECON_COLS],
+                                                        value=DEFAULT_X,
+                                                        clearable=False,
+                                                    ),
+                                                ],
+                                                md=6,
+                                            ),
+                                            dbc.Col(
+                                                [
+                                                    dbc.Label("Social indicator (Y)"),
+                                                    dcc.Dropdown(
+                                                        id="global-y-col",
+                                                        options=[{"label": c, "value": c} for c in SOCIAL_COLS],
+                                                        value=DEFAULT_Y,
+                                                        clearable=False,
+                                                    ),
+                                                ],
+                                                md=6,
+                                            ),
+                                        ],
+                                        className="mb-2",
+                                    ),
+
+                                    dbc.Row(
+                                        [
+                                            dbc.Col(
+                                                dbc.Checklist(
+                                                    id="global-options",
+                                                    options=[
+                                                        {"label": "Use log(X) in regression", "value": "logx"},
+                                                        {"label": "Show regression line", "value": "reg"},
+                                                    ],
+                                                    value=["logx", "reg"],
+                                                ),
+                                                md=12,
+                                            ),
+                                            dbc.Col(
+                                                [
+                                                    dbc.Label("Highlight top N over/under", className="mt-2"),
+                                                    dcc.Slider(
+                                                        id="global-top-n",
+                                                        min=3,
+                                                        max=15,
+                                                        step=1,
+                                                        value=8,
+                                                        marks={3: "3", 8: "8", 15: "15"},
+                                                    ),
+                                                ],
+                                                md=12,
+                                            ),
+                                        ],
+                                        className="mb-2",
+                                    ),
+
+                                    dcc.Graph(
+                                        id="global-scatter",
+                                        config={"displayModeBar": True},
+                                        style={"height": "520px"},
+                                    ),
+                                ]
+                            ),
+                        ],
+                        className="h-100",
+                    ),
+                    md=6,
                 ),
+
+                # Heatmap
                 dbc.Col(
-                    [
-                        dbc.Label("Social indicator (Y)"),
-                        dcc.Dropdown(
-                            id="global-y-col",
-                            options=[{"label": c, "value": c} for c in SOCIAL_COLS],
-                            value=DEFAULT_Y,
-                            clearable=False,
-                        ),
-                    ],
-                    md=4,
-                ),
-                dbc.Col(
-                    [
-                        dbc.Label("Options"),
-                        dbc.Checklist(
-                            id="global-options",
-                            options=[
-                                {"label": "Use log(X) in regression", "value": "logx"},
-                                {"label": "Show regression line", "value": "reg"},
-                            ],
-                            value=["logx", "reg"],
-                        ),
-                        dbc.Label("Highlight top N over/under", className="mt-2"),
-                        dcc.Slider(
-                            id="global-top-n",
-                            min=3,
-                            max=15,
-                            step=1,
-                            value=8,
-                            marks={3: "3", 8: "8", 15: "15"},
-                        ),
-                    ],
-                    md=4,
+                    dbc.Card(
+                        [
+                            dbc.CardHeader("Indicator correlations"),
+                            dbc.CardBody(
+                                dcc.Graph(
+                                    id="global-corr-heatmap",
+                                    figure=build_correlation_heatmap(DF, CORR_COLS),
+                                    style={"height": "520px"},
+                                ),
+                            ),
+                        ],
+                        className="h-100",
+                    ),
+                    md=6,
                 ),
             ],
-            className="mb-3",
-        ),
-        dcc.Graph(id="global-scatter", config={"displayModeBar": True}),
-
-        html.Hr(),
-
-        dcc.Graph(
-            id="global-corr-heatmap",
-            figure=build_correlation_heatmap(DF, CORR_COLS),
+            className="mb-4",
         ),
     ],
     fluid=True,
 )
+
 
 @callback(
     Output("global-scatter", "figure"),
