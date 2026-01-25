@@ -93,6 +93,16 @@ def tab_layout():
             ),
             dbc.Col(
                 [
+                    dbc.Button("Reset Views", color="danger", id="reset-views-button")
+                ],
+                width=2,
+                style = {},
+                id = "views-button",
+                className = "",
+
+            ),
+            dbc.Col(
+                [
                     html.Div(views_content(), id="views-tab", style={"display": "none"}, className="mt-4"),
                     html.Div(filter_content(), id="filter-tab", style={"display": "none"}, className="mt-4"),
                 ],
@@ -477,6 +487,7 @@ def filter_content():
     Output("filter-tab", "style"),
     Output("dropdown-col", "style"),
     Output("button-col", "className"),
+    Output("views-button", "className"),
     Input("tabs", "active_tab"),
 )
 def show_tab(active_tab):
@@ -484,7 +495,8 @@ def show_tab(active_tab):
         {"display": "block"} if active_tab == "tab-views" else {"display": "none"},
         {"display": "block"} if active_tab == "tab-filter" else {"display": "none"},
         {"display": "block"} if active_tab == None or active_tab == "tab-views" else {"display" : "none"},
-        "d-flex justify-content-end" if active_tab == "tab-filter" else "d-none"
+        "d-flex justify-content-end" if active_tab == "tab-filter" else "d-none",
+        "d-flex" if active_tab == "tab-views" else "d-none" 
     )
 
 
@@ -631,8 +643,12 @@ def apply_reset_filter(
 
         if active_count > 5:
             return {
-            "DEFAULT_FILTERS" : norm_defaults,
-            "ACTIVE_FILTERS" : None
+                "DEFAULT_FILTERS": norm_defaults,
+                "ACTIVE_FILTERS": None,
+                "LIMIT_EXCEEDED": {
+                    "show": True,
+                    "message": "Maximum 5 filters allowed. Please deselect one or more filters, or reset them."
+                }
             }
         else:
             return {
