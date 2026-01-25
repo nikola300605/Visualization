@@ -45,3 +45,6 @@ venv.bak/
 # Environment variables
 .env
 .env.local
+
+# Whatever I just made some github shit
+.github/
