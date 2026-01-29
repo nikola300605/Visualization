@@ -284,6 +284,17 @@ def apply_filters(filters_data, n_clicks_reset, current_view_metric):
     if ctx.triggered_id == "reset-button":
         return fig_map, "", "", False, "", False
 
+    # Check for LIMIT_EXCEEDED first - show warning toast even if filters weren't applied
+    if filters_data and "LIMIT_EXCEEDED" in filters_data and filters_data["LIMIT_EXCEEDED"].get("show"):
+        return (
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            filters_data["LIMIT_EXCEEDED"].get("message", "Too many filters selected"),
+            True,
+        )
+
     # Store triggered (from activate-button)
     if not filters_data or "ACTIVE_FILTERS" not in filters_data or filters_data["ACTIVE_FILTERS"] is None:
         return (
