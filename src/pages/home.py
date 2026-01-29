@@ -80,7 +80,7 @@ layout = dbc.Container(
     Output("Net_Migration_Rate_(per_1,000_population)", "value", allow_duplicate=True),
     Output("internet_penetration_rate", "value", allow_duplicate=True),
     Output("electricity_access_percent", "value", allow_duplicate=True),
-    Output("population_density", "value", allow_duplicate=True),
+    Output("Agricultural_Land_%", "value", allow_duplicate=True),
     Output("Arable_Land (%% of Total Agricultural Land)_%", "value", allow_duplicate=True),
     Input("views-radioitems", "value"),
     prevent_initial_call=True,
@@ -108,7 +108,7 @@ def update_graph(selected_column):
         DEFAULT_FILTERS["Net_Migration_Rate_(per_1,000_population)"],
         DEFAULT_FILTERS["internet_penetration_rate"],
         DEFAULT_FILTERS["electricity_access_percent"],
-        DEFAULT_FILTERS["population_density"],
+        DEFAULT_FILTERS["Agricultural_Land_%"],
         DEFAULT_FILTERS["Arable_Land (%% of Total Agricultural Land)_%"],
     )
     
@@ -116,14 +116,121 @@ def update_graph(selected_column):
         return fig_map, None, reset_store, "", *slider_reset
 
     fig = make_base_map()
-    fig.add_choropleth(
-        locations=df_nonempty["ISO3"],
-        z=df_nonempty[selected_column],
-        colorscale=px.colors.sequential.Plasma,
-        hovertext=df_nonempty["Country"],
-        hoverinfo="text+z",
-    )
 
+    if selected_column == 'Real_GDP_PPP_billion_USD_log':
+        tick_vals = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]
+        tick_text = [f"${10**v:,.0f}B" if 10**v < 1000 else f"${10**v/1000:,.1f}T" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty["ISO3"],
+            z=df_nonempty[selected_column],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty["Real_GDP_PPP_billion_USD"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "GDP (PPP): $%{customdata[0]:,.0f}B<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='GDP (PPP, billion USD)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+    elif selected_column == 'population_density_log':
+
+        tick_vals = [-1, 0, 1, 2, 3, 4]
+        tick_text = [f"{10**v:,.0f}" if 10**v < 1000 else f"{10**v/1000:,.1f}K" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty["ISO3"],
+            z=df_nonempty[selected_column],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty["population_density"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "Population Density: %{customdata[0]:,.2f}<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='Population Density (log)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+    
+    elif selected_column == 'road_density_log':
+        tick_vals = [-1, 0, 1, 2]
+        tick_text = [f"{10**v:,.2f}" if 10**v < 1000 else f"{10**v/1000:,.2f}K" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty["ISO3"],
+            z=df_nonempty[selected_column],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty["road_density"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "Road Density: %{customdata[0]:,.2f} km of road per km^2<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='Road Density (log)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+
+    elif selected_column == 'Real_GDP_per_Capita_USD_log':
+        tick_vals = [3, 3.5, 4, 4.5, 5]
+        tick_text = [f"${10**v:,.0f}" if 10**v < 1000 else f"${10**v/1000:,.1f}K" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty["ISO3"],
+            z=df_nonempty[selected_column],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty["Real_GDP_per_Capita_USD"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "GDP per Capita: %{customdata[0]:,.0f} USD<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='Real GDP per Capita (USD)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+    else:
+        # Normal handling for all other columns
+        fig.add_choropleth(
+            locations=df_nonempty["ISO3"],
+            z=df_nonempty[selected_column],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=df_nonempty[["Country", selected_column]].values,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                "" + get_label(selected_column) + ": %{customdata[1]:,.2f}<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(
+            title=dict(
+                text = f"{get_label(selected_column)}",
+                side = "top"
+            ),
+            x=0.9,
+            tickfont=dict(size=12),
+            len=0.75,  # Optional: makes the colorbar a bit shorter
+            )
+        )
+        
+    
+
+    # Handle missing data (works for both cases)
     mask_empty_col = df_nonempty[selected_column].isna()
     df_empty_col = pd.concat([df_empty, df_nonempty[mask_empty_col]], ignore_index=True)
 
@@ -135,11 +242,25 @@ def update_graph(selected_column):
         hoverinfo="text",
         marker_line_width=0.8,
         colorscale=[[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
+        marker_line_color="#E4CFCF",
     )
 
     fig.update_layout(title=f"{selected_column.replace('_', ' ').title()} by Country")
     return fig, selected_column, reset_store, "", *slider_reset
 
+
+
+@callback(
+    Output("graph", "figure", allow_duplicate=True),
+    Output("current-view-metric-store", "data", allow_duplicate=True),
+    Output("views-radioitems", "value", allow_duplicate=True),
+    Input("reset-views-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def reset_view(n_clicks):
+    if n_clicks is None:
+        return dash.no_update, dash.no_update, dash.no_update
+    return fig_map, None, None
 
 @callback(
     Output("graph", "figure", allow_duplicate=True),
@@ -207,13 +328,119 @@ def apply_filters(filters_data, n_clicks_reset, current_view_metric):
         )
 
     fig = make_base_map()
-    fig.add_choropleth(
-        locations=df_nonempty_filtered["ISO3"],
-        z=df_nonempty_filtered[current_view_metric],
-        colorscale=px.colors.sequential.Plasma,
-        hovertext=df_nonempty_filtered["Country"],
-        hoverinfo="text+z",
-    )
+
+    if current_view_metric == 'Real_GDP_PPP_billion_USD_log':
+        tick_vals = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4]
+        tick_text = [f"${10**v:,.0f}B" if 10**v < 1000 else f"${10**v/1000:,.1f}T" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty_filtered["ISO3"],
+            z=df_nonempty_filtered[current_view_metric],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty_filtered["Real_GDP_PPP_billion_USD"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "GDP (PPP): $%{customdata[0]:,.0f}B<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='GDP (PPP, billion USD)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+
+    elif current_view_metric == 'population_density_log':
+
+        tick_vals = [-1, 0, 1, 2, 3, 4]
+        tick_text = [f"{10**v:,.0f}" if 10**v < 1000 else f"{10**v/1000:,.1f}K" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty_filtered["ISO3"],
+            z=df_nonempty_filtered[current_view_metric],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty_filtered["population_density"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "Population Density: %{customdata[0]:,.2f}<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='Population Density (log)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+    
+    elif current_view_metric == 'road_density_log':
+        tick_vals = [-1, 0, 1, 2]
+        tick_text = [f"{10**v:,.2f}" if 10**v < 1000 else f"{10**v/1000:,.2f}K" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty_filtered["ISO3"],
+            z=df_nonempty_filtered[current_view_metric],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty_filtered["road_density"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "Road Density: %{customdata[0]:,.2f} km of road per km^2<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='Road Density (log)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+
+    elif current_view_metric == 'Real_GDP_per_Capita_USD_log':
+        tick_vals = [3, 3.5, 4, 4.5, 5]
+        tick_text = [f"${10**v:,.0f}" if 10**v < 1000 else f"${10**v/1000:,.1f}K" for v in tick_vals]
+
+        fig.add_choropleth(
+            locations=df_nonempty_filtered["ISO3"],
+            z=df_nonempty_filtered[current_view_metric],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=np.stack([df_nonempty_filtered["Real_GDP_per_Capita_USD"]], axis=-1),
+            hovertemplate=(
+                "<b>%{location}</b><br>"
+                "GDP per Capita: %{customdata[0]:,.0f} USD<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(len=0.75,
+                title='Real GDP per Capita (USD)<br><sub>colors use log scale</sub>',
+                x=0.9,
+                tickvals = tick_vals,
+                ticktext = tick_text)
+        )
+
+    
+    else:
+        fig.add_choropleth(
+            locations=df_nonempty_filtered["ISO3"],
+            z=df_nonempty_filtered[current_view_metric],
+            colorscale=px.colors.sequential.Plasma,
+            customdata=df_nonempty[["Country", current_view_metric]].values,
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                "" + get_label(current_view_metric) + ": %{customdata[1]:,.2f}<br>"
+                "<extra></extra>"
+            ),
+            showscale=True,
+            colorbar=dict(
+            title=dict(
+                text = f"{get_label(current_view_metric)}",
+                side = "top"
+            ),
+            x=0.9,
+            tickfont=dict(size=12),
+            len=0.75,  # Optional: makes the colorbar a bit shorter
+            )
+        )
 
     fig.update_layout(title=f"{current_view_metric.replace('_', ' ').title()} by Country")
 
@@ -227,8 +454,8 @@ def apply_filters(filters_data, n_clicks_reset, current_view_metric):
     )
 
 @callback(
-    Output("url", "pathname"),
-    Output("url", "search"),
+    Output("url", "pathname", allow_duplicate=True),
+    Output("url", "search",  allow_duplicate=True),
     Input("graph", "clickData"),
     prevent_initial_call=True,
 )
@@ -243,6 +470,26 @@ def go_to_country(clickData):
     iso3 = pts[0].get("location")
     if not iso3:
         return dash.no_update, dash.no_update
+
+    return "/country", f"?iso3={iso3}"
+
+@callback(
+    Output("url", "pathname", allow_duplicate=True),
+    Output("url", "search", allow_duplicate=True),
+    Input("country-dropdown", "value"),
+    prevent_initial_call=True,
+)
+def go_to_country(value):
+    if not value:
+        return dash.no_update, dash.no_update
+
+    if value is None:
+        return dash.no_update, dash.no_update
+    
+    if value not in df["ISO3"].values:
+        return dash.no_update, dash.no_update
+    
+    iso3 = value
 
     return "/country", f"?iso3={iso3}"
 

@@ -29,9 +29,9 @@ COLUMN_LABELS = {
     # Population & Demographics
     "Total_Population": "Total Population",
     "Population_Growth_Rate_(percentage)": "Population Growth Rate (%)",
-    "Median_Age": "Median Age",
-    "Birth_Rate": "Birth Rate",
-    "Death_Rate": "Death Rate",
+    "Median_Age": "Median Age (Years)",
+    "Birth_Rate": "Birth Rate (per 1,000 people)",
+    "Death_Rate": "Death Rate (per 1,000 people)",
     "Total_Fertility_Rate": "Total Fertility Rate",
     "Infant_Mortality_Rate": "Infant Mortality Rate",
     "Life_Expectancy_at_Birth_(years)": "Life Expectancy at Birth (years)",
@@ -41,7 +41,7 @@ COLUMN_LABELS = {
     "Male_Literacy_Rate [%]": "Male Literacy Rate (%)",
     "Female_Literacy_Rate [%]": "Female Literacy Rate (%)",
     "Expected_Years_of_Schooling_(years)": "Expected Years of Schooling",
-    "Adolescent_Birth_Rate_(births_per_1,000_women_ages_15-19)": "Adolescent Birth Rate",
+    "Adolescent_Birth_Rate_(births_per_1,000_women_ages_15-19)": "Adolescent Birth Rate (per 1,000 women ages 15-19)",
     
     # Economic data
     "Real_GDP_per_Capita_USD": "Real GDP per Capita (USD)",
@@ -57,6 +57,7 @@ COLUMN_LABELS = {
     "Exchange_Rate_per_USD": "Exchange Rate (per USD)",
     "Unemployment_Rate_percent": "Unemployment Rate (%)",
     "Youth_Unemployment_Rate_percent": "Youth Unemployment Rate (%)",
+    "Youth_Unemployment_Rate [%]": "Youth Unemployment Rate (%)",
     "Population_Below_Poverty_Line_percent": "Population Below Poverty Line (%)",
     
     # Human Development Index
@@ -94,8 +95,9 @@ COLUMN_LABELS = {
     "Arable_Land (%% of Total Agricultural Land)_%": "Arable Land (% of Agricultural)",
     "Permanent_Crops_%": "Permanent Crops (%)",
     "Irrigated_Land_sq_km": "Irrigated Land (sq km)",
-    "irrigated_land_percent": "Irrigated Land (%)",
-    "population_density": "Population Density",
+    "irrigated_land_percent [% of total agricultural land]": "Irrigated Land (% of total agricultural land)",
+    "Popilation_density" : "Population Density (people per sq km)",
+    "population_density_log": "Population Density (log, people per sq km)",
     
     # Migration
     "Net_Migration_Rate_(per_1,000_population)": "Net Migration Rate (per 1,000)",

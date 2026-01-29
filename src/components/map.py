@@ -56,6 +56,15 @@ def generate_choropleth() -> go.Figure:
         marker_line_width=0.8,
     )
 
+    fig.update_layout(
+    coloraxis_showscale=False,
+    coloraxis=None
+    )
+
+    for trace in fig.data:
+        if hasattr(trace, 'coloraxis'):
+            trace.coloraxis = None
+
     """ fig.update_layout(
         transition=dict(duration=100, easing="cubic-in-out")
     ) """
@@ -79,9 +88,7 @@ def generate_filter_based_chloropeth(df:pd.DataFrame, active_filters: dict, miss
     df = df.copy()
 
     globally_empty_iso3 = set(only_nas["ISO3"].tolist())
-    print(f"DEBUG: globally_empty_iso3 = {globally_empty_iso3}")  # ← ADD THIS
-    print(f"DEBUG: Number of globally empty: {len(globally_empty_iso3)}")  # ← AND THIS
-    print(f"DEBUG: 'WSH' in set? {'WSH' in globally_empty_iso3}")  # ← AND THIS
+
 
     if df.empty:
         return generate_choropleth()

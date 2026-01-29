@@ -43,10 +43,7 @@ DEFAULT_FILTERS = {
     ],
     "internet_penetration_rate": [0, 100],
     "electricity_access_percent": [0, 100],
-    "population_density": [
-        np.floor(df['population_density'].min()/20)*20,
-        np.ceil(df['population_density'].max()/20)*20
-    ],
+    "Agricultural_Land_%": [0, 100],
     "Arable_Land (%% of Total Agricultural Land)_%": [0, 100]
 }
 
@@ -62,7 +59,7 @@ def tab_layout():
                             dbc.Tab(label="Filter", tab_id="tab-filter"),
                         ],
                         id="tabs",
-                        active_tab="tab-filter",
+                        active_tab="tab-views",
                     ),
                 ],
                 width=8,
@@ -71,7 +68,7 @@ def tab_layout():
             dbc.Col(
                 dcc.Dropdown(
                     id="country-dropdown",
-                    options=[{"label": c, "value": c} for c in sorted(df["Country"].dropna().unique())],
+                    options=[{"label": row["Country"], "value": row["ISO3"]} for _, row in df[["Country", "ISO3"]].dropna().iterrows()],
                     className="dbc",
                 ),
                 width=4,
@@ -146,7 +143,12 @@ def views_content():
         justify="start"
     )
 
+
+def transform_value(value):
+    return 10 ** value
+
 def filter_content():
+
 
     economic_filters= dbc.Row(
         [
@@ -425,18 +427,16 @@ def filter_content():
             ),
             dbc.Col(
                 [
-                    dbc.Label("Population density", className="ps-4 pe-4"),
+                    dbc.Label("Agriculture land (%)", className="ps-4 pe-4"),
                     dcc.RangeSlider(
-                        min = np.floor(df['population_density'].min()/20)*20,
-                        max = np.ceil(df['population_density'].max()/20)*20,
-                        #step = 20,
-                        tooltip={"placement": "bottom", "always_visible": True},
+                        min = 0,
+                        max = 100,
+                        step = 5,
                         allowCross=False,
-                        id="population_density",
-                        value = [
-                            np.floor(df['population_density'].min()/20)*20,
-                            np.ceil(df['population_density'].max()/20)*20
-                        ]
+                        id="Agricultural_Land_%",
+                        value = [0, 100],
+                        marks = {i: f'{i}%' for i in range(0, 101, 10)},
+                        tooltip={"placement": "bottom", "always_visible": True},
                     ),
                 ],  
                 width=6,
@@ -508,8 +508,8 @@ def show_tab(active_tab):
 def update_views(selected_view):
     options_by_view = {
         "economy": [
-            {"label": "Real GDP per capita", "value": "Real_GDP_per_Capita_USD"},
-            {"label": "Total GDP (billion USD)", "value": "Real_GDP_PPP_billion_USD"},
+            {"label": "Real GDP per capita (log scale)", "value": "Real_GDP_per_Capita_USD_log"},
+            {"label": "Total GDP (billion USD, logged)", "value": "Real_GDP_PPP_billion_USD_log"},
             {"label": "Unemployment Rate", "value": "Unemployment_Rate_percent"},
             {"label": "Poverty Rate", "value": "Population_Below_Poverty_Line_percent"},
             {"label": "Public Debt (Percent GDP)", "value": "Public_Debt_percent_of_GDP"},
@@ -522,16 +522,16 @@ def update_views(selected_view):
             {"label": "Life Expectancy at Birth", "value": "Life_Expectancy_at_Birth_(years)"},
         ],
         "demographics": [
-            {"label": "Population Density", "value": "population_density"},
+            {"label": "Population Density (log scale)", "value": "population_density_log"},
             {"label": "Population Growth Rate", "value": "Population_Growth_Rate_(percentage)"},
             {"label": "Fertility Rate", "value": "Total_Fertility_Rate"},
             {"label": "Arable Land (% of total)", "value": "Arable_Land (%% of Total Agricultural Land)_%"},
-            {"label": "Irrigated Land (% of total agricultural)", "value": "irrigated_land_percent"},
+            {"label": "Irrigated Land (% of total agricultural)", "value": "irrigated_land_percent [%_of_total_agricultural_land]"},
         ],
         "infrastructure": [
             {"label": "Internet Penetration Rate", "value": "internet_penetration_rate"},
             {"label": "Electricity Access Rate", "value": "electricity_access_percent"},
-            {"label": "Road Density", "value": "road_density_log"},
+            {"label": "Road Density (log scale)", "value": "road_density_log"},
             {"label": "Broadband Subscriptions", "value": "broadband_fixed_subscriptions_rate"},
         ],
     }
@@ -576,7 +576,7 @@ def _norm(v):
     State("Net_Migration_Rate_(per_1,000_population)", "value"),
     State("internet_penetration_rate", "value"),
     State("electricity_access_percent", "value"),
-    State("population_density", "value"),
+    State("Agricultural_Land_%", "value"),
     State("Arable_Land (%% of Total Agricultural Land)_%", "value")
 )   
 def apply_reset_filter(
@@ -596,7 +596,7 @@ def apply_reset_filter(
     migration_rate,
     internet_pen,
     elec_access,
-    population_density,
+    agri_land_perc,
     arable_land_perc
 ):
     norm_defaults = {k: _norm(v) for k, v in DEFAULT_FILTERS.items()}
@@ -629,7 +629,7 @@ def apply_reset_filter(
             "Net_Migration_Rate_(per_1,000_population)": migration_rate,
             "internet_penetration_rate": internet_pen,
             "electricity_access_percent": elec_access,
-            "population_density": population_density,
+            "Agricultural_Land_%": agri_land_perc,
             "Arable_Land (%% of Total Agricultural Land)_%": arable_land_perc
         }
 
@@ -674,7 +674,7 @@ def apply_reset_filter(
     Output("Net_Migration_Rate_(per_1,000_population)", "value"),
     Output("internet_penetration_rate", "value"),
     Output("electricity_access_percent", "value"),
-    Output("population_density", "value"),
+    Output("Agricultural_Land_%", "value"),
     Output("Arable_Land (%% of Total Agricultural Land)_%", "value"),
     Input("reset-button", "n_clicks"),
     prevent_initial_call=True,
@@ -695,7 +695,7 @@ def reset_all_sliders(n_clicks):
         DEFAULT_FILTERS["Net_Migration_Rate_(per_1,000_population)"],
         DEFAULT_FILTERS["internet_penetration_rate"],
         DEFAULT_FILTERS["electricity_access_percent"],
-        DEFAULT_FILTERS["population_density"],
+        DEFAULT_FILTERS["Agricultural_Land_%"],
         DEFAULT_FILTERS["Arable_Land (%% of Total Agricultural Land)_%"],
     )
 
