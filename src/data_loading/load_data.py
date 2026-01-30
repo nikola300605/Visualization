@@ -52,8 +52,8 @@ def load_data_into_df():
     merged_data = derive_new_metrics(merged_data)
     merged_data = create_development_clusters_without_analysis(merged_data, n_clusters=3)
 
-    for col in merged_data.columns:
-        print(col, " - ", merged_data[col].dtype)
+    """ for col in merged_data.columns:
+        print(col, " - ", merged_data[col].dtype) """
 
     merged_data['Cluster_numeric'] = merged_data['Cluster']
     merged_data['Cluster'] = merged_data['Cluster'].map(cluster_map)
