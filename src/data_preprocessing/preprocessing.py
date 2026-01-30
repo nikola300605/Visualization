@@ -492,69 +492,39 @@ def derive_new_metrics(df: pd.DataFrame) -> pd.DataFrame:
     @return: DataFrame with new metrics added.
     """
 
-    df['population_density'] = df['Total_Population'] / df['Area_Total_sq_km'].clip(lower=1)
-    df['internet_penetration_rate'] = (df['internet_users_total'] / df['Total_Population']) * 100
-    df['road_density'] = (df['roadways_km'] / df['Area_Total_sq_km'].replace(0, np.nan))
-    df['road_density_log'] = np.log10(
-    df['road_density'].replace(0, np.nan)
-    )
-    
+    # Derived metrics - handle zeros consistently
+    df['population_density'] = df['Total_Population'] / df['Area_Total_sq_km'].replace(0, np.nan)
+    df['internet_penetration_rate'] = (df['internet_users_total'] / df['Total_Population'].replace(0, np.nan)) * 100
+    df['road_density'] = df['roadways_km'] / df['Area_Total_sq_km'].replace(0, np.nan)
     df['broadband_fixed_subscriptions_rate'] = (df['broadband_fixed_subscriptions_total'] / df['Total_Population'].replace(0, np.nan)) * 100
 
-    agri_area = (
-    df['Agricultural_Land_%'] / 100 *
-    df['Area_Total_sq_km'].replace(0, np.nan)
+    # Agricultural land calculations
+    agri_area = (df['Agricultural_Land_%'] / 100 * df['Area_Total_sq_km'].replace(0, np.nan))
+    df['irrigated_land_percent [%_of_total_agricultural_land]'] = (df['Irrigated_Land_sq_km'] / agri_area.replace(0, np.nan)) * 100
+
+    # Cap percentages at 100 (handle data quality issues)
+    df.loc[df['irrigated_land_percent [%_of_total_agricultural_land]'] > 100, 'irrigated_land_percent [%_of_total_agricultural_land]'] = np.nan
+    df.loc[df['internet_penetration_rate'] > 100, 'internet_penetration_rate'] = np.nan
+    df.loc[df['broadband_fixed_subscriptions_rate'] > 100, 'broadband_fixed_subscriptions_rate'] = np.nan
+
+    # Log transformations for skewed data
+    # Replace 0 with np.nan first, then apply log1p to the Series
+    df['Real_GDP_PPP_billion_USD_log'] = np.log10(
+    df['Real_GDP_PPP_billion_USD'].where(df['Real_GDP_PPP_billion_USD'] > 0)
     )
 
-    df['irrigated_land_percent'] = (
-        df['Irrigated_Land_sq_km'] / agri_area.replace(0, np.nan)
-    ) * 100
+    df['road_density_log'] = np.log10(
+        df['road_density'].where(df['road_density'] > 0)
+    )
 
-    df.loc[
-    df['irrigated_land_percent'] > 100,
-    'irrigated_land_percent'
-        ] = np.nan
+    df['population_density_log'] = np.log10(
+        df['population_density'].where(df['population_density'] > 0)
+    )
 
-
-    df.loc[
-    df['internet_penetration_rate'] > 100,
-    'internet_penetration_rate'
-        ] = np.nan
-    
-    df.loc[
-    df['broadband_fixed_subscriptions_rate'] > 100,
-    'broadband_fixed_subscriptions_rate'
-        ] = np.nan
-
-    df.loc
-
+    df["Real_GDP_per_Capita_USD_log"] = np.log10(
+        df['Real_GDP_per_Capita_USD'].where(df['Real_GDP_per_Capita_USD'] > 0)
+    )
 
     return df
+
     
-
-""" data_dict = load_data()
-
-#cleaned datasets
-data_dict["geography_data"] = clean_geography_data(data_dict["geography_data"])
-data_dict["government_and_civics_data"] = clean_government_data(data_dict["government_and_civics_data"])
-data_dict["transportation_data"] = clean_transportation_data(data_dict["transportation_data"])
-data_dict["demographics_data"] = clean_demographics_data(data_dict["demographics_data"])
-data_dict["economy_data"] = clean_economy_data(data_dict["economy_data"])
-
-
-merged_data = merge_data(data_dict)
-
- 
-merged_data = clean_country_names(merged_data)
-
-# Add region column based on country
-merged_data = add_region_column(merged_data)
-
-for col in merged_data.columns:
-    print(col, " - ", merged_data[col].dtype)
-
-
-cols_to_ignore = ["Country", "ISO3"]  
-mask = merged_data.drop(columns=cols_to_ignore).isna().all(axis=1)
-
-only_nas = merged_data[mask] """

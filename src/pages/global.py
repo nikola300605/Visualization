@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 from dash import dcc, html, callback, Input, Output
 from src.data_loading.load_data import load_data_into_df
 
-
 dash.register_page(__name__, path="/global", name="Global", order=1)
 
 
@@ -90,7 +89,6 @@ CORR_COLS = [
     "Median_Age",
 ]
 
-
 if not ECON_COLS:
     ECON_COLS = _numeric_cols(DF)
 if not SOCIAL_COLS:
@@ -147,10 +145,10 @@ def build_scatter(
             customdata=np.stack([d["Country"], d["predicted"], d["residual"]], axis=1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                f"{x_col}: %{{x}}<br>"
-                f"{y_col}: %{{y}}<br>"
+                f"{get_label(x_col)}: %{{x}}<br>"
+                f"{get_label(y_col)}: %{{y}}<br>"
                 "Expected: %{customdata[1]:.2f}<br>"
-                "Residual: %{customdata[2]:+.2f}<extra></extra>"
+                "Residual: %{customdata[2]:.2f}<extra></extra>"
             ),
         )
     )
@@ -182,17 +180,17 @@ def build_scatter(
             y=under[y_col],
             mode="markers+text",
             name="Under-performing",
-            marker=dict(size=10),
+            marker=dict(size=10, opacity = 0.5),
             text=under["Country"],
             textposition="top center",
-            textfont=dict(size=10),
+            textfont=dict(size=10, weight=300),
             customdata=np.stack([under["Country"], under["predicted"], under["residual"]], axis=1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                f"{x_col}: %{{x}}<br>"
-                f"{y_col}: %{{y}}<br>"
+                f"{get_label(x_col)}: %{{x}}<br>"
+                f"{get_label(y_col)}: %{{y}}<br>"
                 "Expected: %{customdata[1]:.2f}<br>"
-                "Residual: %{customdata[2]:+.2f}<extra></extra>"
+                "Residual: %{customdata[2]:.2f}<extra></extra>"
             ),
         )
     )
@@ -203,17 +201,17 @@ def build_scatter(
             y=over[y_col],
             mode="markers+text",
             name="Over-performing",
-            marker=dict(size=10),
+            marker=dict(size=10, opacity = 0.5),
             text=over["Country"],
             textposition="top center",
-            textfont=dict(size=10),
+            textfont=dict(size=10, weight=300),
             customdata=np.stack([over["Country"], over["predicted"], over["residual"]], axis=1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
-                f"{x_col}: %{{x}}<br>"
-                f"{y_col}: %{{y}}<br>"
+                f"{get_label(x_col)}: %{{x}}<br>"
+                f"{get_label(y_col)}: %{{y}}<br>"   
                 "Expected: %{customdata[1]:.2f}<br>"
-                "Residual: %{customdata[2]:+.2f}<extra></extra>"
+                "Residual: %{customdata[2]:.2f}<extra></extra>"
             ),
         )
     )
@@ -223,8 +221,8 @@ def build_scatter(
         text="Social vs Economic indicator",
         font=dict(size=18),
         x=0.5,),
-        xaxis_title=x_col if not use_log_x else f"{x_col} (log used in model)",
-        yaxis_title=y_col,
+        xaxis_title=get_label(x_col) if not use_log_x else f"{get_label(x_col)} (log used in model)",
+        yaxis_title=get_label(y_col),
         legend_title="",
         margin=dict(l=10, r=10, t=55, b=10),
     )
@@ -235,12 +233,14 @@ def build_scatter(
 def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
     data = df[cols].dropna()
     corr = data.corr()
+    labels = [get_label(c) for c in corr.columns]
+
 
     fig = go.Figure(
         data=go.Heatmap(
             z=corr.values,
-            x=corr.columns,
-            y=corr.columns,
+            x=labels,
+            y=labels,
             colorscale="RdBu",
             zmid=0,
             colorbar=dict(title="Correlation"),
@@ -263,6 +263,15 @@ def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
         xaxis=dict(tickangle=45),
         yaxis=dict(autorange="reversed"),
         margin=dict(l=80, r=20, t=60, b=80),
+    )
+
+    fig.add_annotation(
+    text="Click on tile to explore their relationship!",
+    xref="paper", yref="paper",
+    x=0.5, y=1.08,  # Centered above the plot
+    showarrow=False,
+    font=dict(size=12, color="white"),
+    align="center"
     )
 
     return fig
@@ -322,6 +331,170 @@ def build_global_ranking(df: pd.DataFrame, metric: str, top_n: int = 50, show_bo
     
     return fig
 
+def interactive_parallel_coords(
+    df: pd.DataFrame,
+    dims: list,
+    cluster_col: str = "cluster",
+    country_col: str = "Country",
+    title: str = "Interactive Parallel Coordinates",
+    height: int = 700,
+):
+    """
+    Create an interactive parallel coordinates plot optimized for Dash.
+    Enhanced version with improved visual styling and readability.
+    
+    Args:
+        df: DataFrame with cluster assignments and features
+        dims: List of column names to visualize
+        cluster_col: Name of cluster column
+        country_col: Column name for hover labels
+        title: Plot title
+        height: Figure height in pixels
+    
+    Returns:
+        Plotly figure object ready for Dash
+    """
+    
+    # Validate columns
+    missing_cols = [c for c in [cluster_col, *dims] if c not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns in df: {missing_cols}")
+    
+    # Clean data
+    d = df.copy()
+    
+    # Ensure dims are numeric
+    for col in dims:
+        d[col] = pd.to_numeric(d[col], errors="coerce")
+    
+    # Drop rows with missing values
+    required_cols = [cluster_col, *dims]
+    if country_col in d.columns:
+        required_cols.append(country_col)
+    d = d.dropna(subset=required_cols)
+    
+    # Map clusters to numeric values
+    cluster_labels = sorted(d[cluster_col].unique())
+    cluster_to_num = {c: i for i, c in enumerate(cluster_labels)}
+    d['cluster_numeric'] = d[cluster_col].map(cluster_to_num)
+
+    # Build dimensions for parallel coordinates
+    dimensions = []
+    
+    for dim in dims:
+        dim_dict = dict(
+            label=get_label(dim),
+            values=d[dim],
+            range=[d[dim].min(), d[dim].max()],
+        )
+        dimensions.append(dim_dict)
+    
+    # Add cluster as a constraintrange dimension (for filtering)
+    dimensions.append(
+        dict(
+            label="Cluster",
+            values=d['cluster_numeric'],
+            tickvals=list(range(len(cluster_labels))),
+            ticktext=[str(c) for c in cluster_labels],
+            range=[0, len(cluster_labels) - 1],
+        )
+    )
+    
+    # Create figure with enhanced styling
+    fig = go.Figure(
+        data=go.Parcoords(
+            line=dict(
+                color=d['cluster_numeric'],
+                colorscale = ["rgba(27,158,119,1)", "rgba(217,95,2,1)", "rgba(117,112,179,1)", "rgba(231,41,138,1)"],
+                showscale=True,
+                cmin=0,
+                cmax=len(cluster_labels) - 1,
+                colorbar=dict(
+                    title=dict(
+                        text="Cluster",
+                        font=dict(size=14, color='white')
+                    ),
+                    tickvals=list(range(len(cluster_labels))),
+                    ticktext=[f"{c}" for c in cluster_labels],
+                    tickfont=dict(size=12, color='white', family='Arial'),
+                    x=1.12
+                )
+            ),
+            dimensions=dimensions,
+            # Enhanced label styling
+            labelfont=dict(
+                size=10,
+                color='white'
+            ),
+            # Enhanced tick styling
+            tickfont=dict(
+                size=11,
+                color='rgba(255, 255, 255, 0.9)',
+                family='Arial'
+            ),
+            # Stronger axis lines
+            rangefont=dict(
+                size=11,
+                color='white'
+            ),
+        )
+    )
+    
+    # Update layout with enhanced styling
+    fig.update_layout(
+        title=dict(
+            text=title,
+            font=dict(size=20, color='white'),
+            x=0.02,
+            xanchor="left",
+            y=1,
+            yanchor="top"
+        ),
+        height=height,
+        margin=dict(l=120, r=200, t=100, b=80),
+        font=dict(size=12, color='white'),
+    )
+    
+    # Add custom axis styling through shapes and annotations
+    # This makes the axes more visible
+    shapes = []
+    annotations = []
+    
+    # Calculate x positions for each dimension
+    n_dims = len(dimensions)
+    x_positions = [i / (n_dims - 1) for i in range(n_dims)]
+    
+    # Add stronger vertical lines for each axis
+    for i, x_pos in enumerate(x_positions):
+        shapes.append(
+            dict(
+                type='line',
+                xref='paper',
+                yref='paper',
+                x0=x_pos,
+                y0=0,
+                x1=x_pos,
+                y1=1,
+                line=dict(
+                    color='rgba(255, 255, 255, 0.4)',
+                    width=2.5
+                )
+            )
+        )
+    
+    fig.update_layout(shapes=shapes)
+
+    fig.add_annotation(
+    text="Filter by clicking and dragging on axes!",
+    xref="paper", yref="paper",
+    x=0.5, y=1.2,  # Centered above the plot
+    showarrow=False,
+    font=dict(size=12, color="white"),
+    align="center"
+    )
+    
+    return fig
+
 layout = dbc.Container(
     [
         html.H1("Global analysis", className="mb-3"),
@@ -341,7 +514,7 @@ layout = dbc.Container(
                                                     dbc.Label("Economic indicator (X)"),
                                                     dcc.Dropdown(
                                                         id="global-x-col",
-                                                        options=[{"label": c, "value": c} for c in ECON_COLS],
+                                                        options=[{"label": get_label(c), "value": c} for c in ECON_COLS],
                                                         value=DEFAULT_X,
                                                         clearable=False,
                                                     ),
@@ -353,7 +526,7 @@ layout = dbc.Container(
                                                     dbc.Label("Social indicator (Y)"),
                                                     dcc.Dropdown(
                                                         id="global-y-col",
-                                                        options=[{"label": c, "value": c} for c in SOCIAL_COLS],
+                                                        options=[{"label": get_label(c), "value": c} for c in SOCIAL_COLS],
                                                         value=DEFAULT_Y,
                                                         clearable=False,
                                                     ),
@@ -411,11 +584,20 @@ layout = dbc.Container(
                         [
                             dbc.CardHeader("Indicator correlations"),
                             dbc.CardBody(
-                                dcc.Graph(
-                                    id="global-corr-heatmap",
-                                    figure=build_correlation_heatmap(DF, CORR_COLS),
-                                    style={"height": "520px"},
-                                ),
+                                [
+                                    dcc.Graph(
+                                        id="global-corr-heatmap",
+                                        figure=build_correlation_heatmap(DF, CORR_COLS),
+                                        style={"height": "520px"},
+                                        clickData=None,
+                                    ),
+                                    dcc.Graph(
+                                        id = "scatterplot-correlation",
+                                        figure = px.scatter(),
+                                        style={"height": "400px"},
+                                        className="dbc"
+                                    )
+                                ]
                             ),
                         ],
                         className="h-100",
@@ -478,6 +660,44 @@ layout = dbc.Container(
             ],
             className="mb-4",
         ),
+
+        dbc.Row(
+            [
+                dbc.Col(
+                    dbc.Card(
+                        [
+                            dbc.CardHeader("🌐 Parallel Coordinates of Development Indicators"),
+                            dbc.CardBody(
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            dcc.Graph(
+                                                id="global-parallel-coords",
+                                                figure=interactive_parallel_coords(
+                                                    DF,
+                                                    dims=PARALLEL_COORD_COLS,
+                                                    cluster_col="Cluster",
+                                                    country_col="Country",
+                                                    title="Development Indicators by Cluster",
+                                                    height=500,
+                                                ),
+                                                className="dbc",
+                                                style={"height": "550px"},
+                                                config={"displayModeBar": True},
+                                            ),
+                                            md=12
+                                        )
+                                    ]
+                                )
+                            ),
+                        ],
+                        className="h-100",
+                    ),
+                    md=12,
+                    width = 12
+                ),
+            ]
+        )
     ],
     fluid=True,
 )
@@ -505,3 +725,52 @@ def update_global_scatter(x_col: str, y_col: str, options: list[str], top_n: int
 )
 def update_global_ranking(metric: str, top_n: int, show_bottom: list):
     return build_global_ranking(DF, metric, top_n, "bottom" in show_bottom)
+
+
+
+@callback(
+    Output("scatterplot-correlation", "figure"),
+    Input("global-corr-heatmap", "clickData"),
+    prevent_initial_call=True,
+)
+
+def create_update_scatterplot(clickData):
+    if clickData is None:
+        return dash.no_update
+
+    x_pretty = clickData['points'][0]['x']
+    y_pretty = clickData['points'][0]['y']
+
+    # Map pretty labels back to DataFrame columns
+    col_mapping = {get_label(c): c for c in DF.columns}
+
+    if x_pretty not in col_mapping or y_pretty not in col_mapping:
+        return dash.no_update
+
+    x_col = col_mapping[x_pretty]
+    y_col = col_mapping[y_pretty]
+
+    fig = px.scatter(
+        DF,
+        x=x_col,
+        y=y_col,
+        hover_data=['Country'],
+    )
+
+    fig.update_xaxes(
+        title=get_label(x_col)
+    )
+
+    fig.update_yaxes(
+        title=get_label(y_col)
+    )
+
+    fig.update_layout(
+        title=dict(
+            text=f"Scatterplot: {get_label(x_col)} vs {get_label(y_col)}",
+            font=dict(size=18),
+            x=0.5,
+        )
+    )
+
+    return fig

@@ -1,3 +1,4 @@
+import dash
 import dash_bootstrap_components as dbc
 from dash import dcc, html, callback, Output, Input, State, ctx
 from src.data_loading.load_data import load_data_into_df
@@ -7,16 +8,49 @@ df = load_data_into_df()
 
 
 DEFAULT_FILTERS = {
-    
+    "Real_GDP_per_Capita_USD": [
+        np.floor(df["Real_GDP_per_Capita_USD"].min()/5000)*5000,
+        np.ceil(df["Real_GDP_per_Capita_USD"].max()/5000)*5000
+    ],
+    "Population_Below_Poverty_Line_percent": 0,
+    "Unemployment_Rate_percent": 0,
+    "Public_Debt_percent_of_GDP": np.floor(df['Public_Debt_percent_of_GDP'].min()/20)*20,
+    "Total_Literacy_Rate [%]": 0,
+    "Youth_Unemployment_Rate_percent": 0,
+    "Expected_Years_of_Schooling_(years)": [
+        np.floor(df['Expected_Years_of_Schooling_(years)'].min()/5)*5,
+        np.ceil(df['Expected_Years_of_Schooling_(years)'].max()/5)*5
+    ],
+    "Human_Development_Index_(value)": [
+        np.round(np.floor(df['Human_Development_Index_(value)'].min() / 0.1) * 0.1, 2),
+        np.round(np.ceil(df['Human_Development_Index_(value)'].max() / 0.1) * 0.1, 2)
+    ],
+    "Median_Age": [
+        np.int16(np.floor(df["Median_Age"].min() / 5) * 5),
+        np.int16(np.ceil(df["Median_Age"].max() / 5) * 5)
+    ],
+    "Population_Growth_Rate_(percentage)": [
+        np.floor(df['Population_Growth_Rate_(percentage)'].min()),
+        np.ceil(df['Population_Growth_Rate_(percentage)'].max())
+    ],
+    "Life_Expectancy_at_Birth_(years)": [
+        np.floor(df['Life_Expectancy_at_Birth_(years)'].min()/5)*5,
+        np.ceil(df['Life_Expectancy_at_Birth_(years)'].max()/5)*5
+    ],
+    "Net_Migration_Rate_(per_1,000_population)": [
+        np.round(np.floor(df['Net_Migration_Rate_(per_1,000_population)'].min() / 5) * 5, 2),
+        np.round(np.ceil(df['Net_Migration_Rate_(per_1,000_population)'].max() / 5) * 5, 2)
+    ],
+    "internet_penetration_rate": [0, 100],
+    "electricity_access_percent": [0, 100],
+    "Agricultural_Land_%": [0, 100],
+    "Arable_Land (%% of Total Agricultural Land)_%": [0, 100]
 }
 
 def tab_layout():
     return dbc.Row(
         [ 
-            dcc.Store(
-                id = "filters-store",
-                storage_type="memory",
-            ),
+            # page-level Store moved to the Home page layout (home.py)
             dbc.Col(
                 [
                     dbc.Tabs(
@@ -25,7 +59,7 @@ def tab_layout():
                             dbc.Tab(label="Filter", tab_id="tab-filter"),
                         ],
                         id="tabs",
-                        active_tab="tab-filter",
+                        active_tab="tab-views",
                     ),
                 ],
                 width=8,
@@ -34,7 +68,7 @@ def tab_layout():
             dbc.Col(
                 dcc.Dropdown(
                     id="country-dropdown",
-                    options=[{"label": c, "value": c} for c in sorted(df["Country"].dropna().unique())],
+                    options=[{"label": row["Country"], "value": row["ISO3"]} for _, row in df[["Country", "ISO3"]].dropna().iterrows()],
                     className="dbc",
                 ),
                 width=4,
@@ -53,6 +87,16 @@ def tab_layout():
                 style = {},
                 id="button-col",
                 className="d-flex justify-content-end",
+            ),
+            dbc.Col(
+                [
+                    dbc.Button("Reset Views", color="danger", id="reset-views-button")
+                ],
+                width=2,
+                style = {},
+                id = "views-button",
+                className = "",
+
             ),
             dbc.Col(
                 [
@@ -99,7 +143,12 @@ def views_content():
         justify="start"
     )
 
+
+def transform_value(value):
+    return 10 ** value
+
 def filter_content():
+
 
     economic_filters= dbc.Row(
         [
@@ -378,18 +427,16 @@ def filter_content():
             ),
             dbc.Col(
                 [
-                    dbc.Label("Population density", className="ps-4 pe-4"),
+                    dbc.Label("Agriculture land (%)", className="ps-4 pe-4"),
                     dcc.RangeSlider(
-                        min = np.floor(df['population_density'].min()/20)*20,
-                        max = np.ceil(df['population_density'].max()/20)*20,
-                        #step = 20,
-                        tooltip={"placement": "bottom", "always_visible": True},
+                        min = 0,
+                        max = 100,
+                        step = 5,
                         allowCross=False,
-                        id="population_density",
-                        value = [
-                            np.floor(df['population_density'].min()/20)*20,
-                            np.ceil(df['population_density'].max()/20)*20
-                        ]
+                        id="Agricultural_Land_%",
+                        value = [0, 100],
+                        marks = {i: f'{i}%' for i in range(0, 101, 10)},
+                        tooltip={"placement": "bottom", "always_visible": True},
                     ),
                 ],  
                 width=6,
@@ -439,7 +486,8 @@ def filter_content():
     Output("views-tab", "style"),
     Output("filter-tab", "style"),
     Output("dropdown-col", "style"),
-    Output("button-col", "style"),
+    Output("button-col", "className"),
+    Output("views-button", "className"),
     Input("tabs", "active_tab"),
 )
 def show_tab(active_tab):
@@ -447,7 +495,8 @@ def show_tab(active_tab):
         {"display": "block"} if active_tab == "tab-views" else {"display": "none"},
         {"display": "block"} if active_tab == "tab-filter" else {"display": "none"},
         {"display": "block"} if active_tab == None or active_tab == "tab-views" else {"display" : "none"},
-        {"display": "block"} if active_tab == "tab-filter" else {"display": "none"}
+        "d-flex justify-content-end" if active_tab == "tab-filter" else "d-none",
+        "d-flex" if active_tab == "tab-views" else "d-none" 
     )
 
 
@@ -459,8 +508,8 @@ def show_tab(active_tab):
 def update_views(selected_view):
     options_by_view = {
         "economy": [
-            {"label": "Real GDP per capita", "value": "Real_GDP_per_Capita_USD"},
-            {"label": "Total GDP (billion USD)", "value": "Real_GDP_PPP_billion_USD"},
+            {"label": "Real GDP per capita (log scale)", "value": "Real_GDP_per_Capita_USD_log"},
+            {"label": "Total GDP (billion USD, logged)", "value": "Real_GDP_PPP_billion_USD_log"},
             {"label": "Unemployment Rate", "value": "Unemployment_Rate_percent"},
             {"label": "Poverty Rate", "value": "Population_Below_Poverty_Line_percent"},
             {"label": "Public Debt (Percent GDP)", "value": "Public_Debt_percent_of_GDP"},
@@ -473,16 +522,16 @@ def update_views(selected_view):
             {"label": "Life Expectancy at Birth", "value": "Life_Expectancy_at_Birth_(years)"},
         ],
         "demographics": [
-            {"label": "Population Density", "value": "population_density"},
+            {"label": "Population Density (log scale)", "value": "population_density_log"},
             {"label": "Population Growth Rate", "value": "Population_Growth_Rate_(percentage)"},
             {"label": "Fertility Rate", "value": "Total_Fertility_Rate"},
             {"label": "Arable Land (% of total)", "value": "Arable_Land (%% of Total Agricultural Land)_%"},
-            {"label": "Irrigated Land (% of total agricultural)", "value": "irrigated_land_percent"},
+            {"label": "Irrigated Land (% of total agricultural)", "value": "irrigated_land_percent [%_of_total_agricultural_land]"},
         ],
         "infrastructure": [
             {"label": "Internet Penetration Rate", "value": "internet_penetration_rate"},
             {"label": "Electricity Access Rate", "value": "electricity_access_percent"},
-            {"label": "Road Density", "value": "road_density_log"},
+            {"label": "Road Density (log scale)", "value": "road_density_log"},
             {"label": "Broadband Subscriptions", "value": "broadband_fixed_subscriptions_rate"},
         ],
     }
@@ -491,8 +540,26 @@ def update_views(selected_view):
     default_value = None
     return opts, default_value
 
+
+
+def _norm(v):
+    # list/tuple: normalize each element
+    if isinstance(v, (list, tuple)):
+        return [_norm(x) for x in v]
+
+    # numpy scalar -> python scalar
+    if isinstance(v, np.generic):
+        v = v.item()
+
+    # float: round to avoid tiny representation noise
+    if isinstance(v, float):
+        return round(v, 6)
+
+    return v
+
+
 @callback(
-    Output("filter-store", "data"),
+    Output("filters-store", "data"),
     Input("activate-button", "n_clicks"),
     Input("reset-button", "n_clicks"),
     State("Real_GDP_per_Capita_USD", "value"),
@@ -509,7 +576,7 @@ def update_views(selected_view):
     State("Net_Migration_Rate_(per_1,000_population)", "value"),
     State("internet_penetration_rate", "value"),
     State("electricity_access_percent", "value"),
-    State("population_density", "value"),
+    State("Agricultural_Land_%", "value"),
     State("Arable_Land (%% of Total Agricultural Land)_%", "value")
 )   
 def apply_reset_filter(
@@ -529,20 +596,107 @@ def apply_reset_filter(
     migration_rate,
     internet_pen,
     elec_access,
-    population_density,
+    agri_land_perc,
     arable_land_perc
 ):
+    norm_defaults = {k: _norm(v) for k, v in DEFAULT_FILTERS.items()}
     
     if ctx.triggered_id == None:
-        return DEFAULT_FILTERS
+        return {
+            "DEFAULT_FILTERS" : norm_defaults,
+            "ACTIVE_FILTERS" : None
+            }
 
     if ctx.triggered_id == "reset-button":
-        return DEFAULT_FILTERS
-    
-    if ctx.triggered_id == "activate_button":
         return {
-            ...
+            "DEFAULT_FILTERS" : norm_defaults,
+            "ACTIVE_FILTERS" : None
+            }
+    if ctx.triggered_id == "activate-button":
+
+        changes_dict = {
+            "Real_GDP_per_Capita_USD": gdp_per_capita,
+            "Population_Below_Poverty_Line_percent": below_poverty_rate,
+            "Unemployment_Rate_percent": unemployment_rate,
+            "Public_Debt_percent_of_GDP": public_debt,
+            "Total_Literacy_Rate [%]": literacy_rate,
+            "Youth_Unemployment_Rate_percent": youth_unemployment_rate,
+            "Expected_Years_of_Schooling_(years)": exp_year_schooling,
+            "Human_Development_Index_(value)": hdi,
+            "Median_Age": median_age,
+            "Population_Growth_Rate_(percentage)": population_growth,
+            "Life_Expectancy_at_Birth_(years)": life_expectancy,
+            "Net_Migration_Rate_(per_1,000_population)": migration_rate,
+            "internet_penetration_rate": internet_pen,
+            "electricity_access_percent": elec_access,
+            "Agricultural_Land_%": agri_land_perc,
+            "Arable_Land (%% of Total Agricultural Land)_%": arable_land_perc
         }
 
+        norm_changes = {k: _norm(v) for k, v in changes_dict.items()}
+        
+
+        active_count = sum(
+            1 for k in norm_changes
+            if norm_changes[k] != norm_defaults[k]
+        )
+
+        if active_count > 5:
+            return {
+                "DEFAULT_FILTERS": norm_defaults,
+                "ACTIVE_FILTERS": None,
+                "LIMIT_EXCEEDED": {
+                    "show": True,
+                    "message": "Maximum 5 filters allowed. Please deselect one or more filters, or reset them."
+                }
+            }
+        else:
+            return {
+                "DEFAULT_FILTERS" : norm_defaults,
+                "ACTIVE_FILTERS" : norm_changes
+            }
+
+    return dash.no_update
+
+
+@callback(
+    Output("Real_GDP_per_Capita_USD", "value"),
+    Output("Population_Below_Poverty_Line_percent", "value"),
+    Output("Unemployment_Rate_percent", "value"),
+    Output("Public_Debt_percent_of_GDP", "value"),
+    Output("Total_Literacy_Rate [%]", "value"),
+    Output("Youth_Unemployment_Rate_percent", "value"),
+    Output("Expected_Years_of_Schooling_(years)", "value"),
+    Output("Human_Development_Index_(value)", "value"),
+    Output("Median_Age", "value"),
+    Output("Population_Growth_Rate_(percentage)", "value"),
+    Output("Life_Expectancy_at_Birth_(years)", "value"),
+    Output("Net_Migration_Rate_(per_1,000_population)", "value"),
+    Output("internet_penetration_rate", "value"),
+    Output("electricity_access_percent", "value"),
+    Output("Agricultural_Land_%", "value"),
+    Output("Arable_Land (%% of Total Agricultural Land)_%", "value"),
+    Input("reset-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def reset_all_sliders(n_clicks):
+    return (
+        DEFAULT_FILTERS["Real_GDP_per_Capita_USD"],
+        DEFAULT_FILTERS["Population_Below_Poverty_Line_percent"],
+        DEFAULT_FILTERS["Unemployment_Rate_percent"],
+        DEFAULT_FILTERS["Public_Debt_percent_of_GDP"],
+        DEFAULT_FILTERS["Total_Literacy_Rate [%]"],
+        DEFAULT_FILTERS["Youth_Unemployment_Rate_percent"],
+        DEFAULT_FILTERS["Expected_Years_of_Schooling_(years)"],
+        DEFAULT_FILTERS["Human_Development_Index_(value)"],
+        DEFAULT_FILTERS["Median_Age"],
+        DEFAULT_FILTERS["Population_Growth_Rate_(percentage)"],
+        DEFAULT_FILTERS["Life_Expectancy_at_Birth_(years)"],
+        DEFAULT_FILTERS["Net_Migration_Rate_(per_1,000_population)"],
+        DEFAULT_FILTERS["internet_penetration_rate"],
+        DEFAULT_FILTERS["electricity_access_percent"],
+        DEFAULT_FILTERS["Agricultural_Land_%"],
+        DEFAULT_FILTERS["Arable_Land (%% of Total Agricultural Land)_%"],
+    )
 
 
