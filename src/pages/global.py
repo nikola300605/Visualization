@@ -12,6 +12,18 @@ dash.register_page(__name__, path="/global", name="Global", order=1)
 
 DF = load_data_into_df()
 
+# Example cluster mapping
+cluster_labels = {
+        0: "Matured Economies",
+        1: "Emerging Growth Economies",
+        2: "Developing Economies"
+    }
+cluster_colors = {
+    0: "#e7298a",  # pink
+    1: "#d95f02",  # orange
+    2: "#2ca02c",  # green
+}
+
 def _numeric_cols(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c != "Country" and pd.api.types.is_numeric_dtype(df[c])]
 
@@ -110,8 +122,8 @@ def build_scatter(
     show_reg_line: bool,
     top_n: int,
 ) -> go.Figure:
-    d = df[["Country", x_col, y_col]].copy()
-    d = d.dropna(subset=[x_col, y_col])
+    d = df[["Country", x_col, y_col, "Cluster"]].copy()
+    d = d.dropna(subset=[x_col, y_col, "Cluster"])
 
     if use_log_x:
         d = d[d[x_col] > 0].copy()
@@ -144,13 +156,14 @@ def build_scatter(
             mode="markers",
             name="Countries",
             marker=dict(size=7, opacity=0.45),
-            customdata=np.stack([d["Country"], d["predicted"], d["residual"]], axis=1),
+            customdata=np.stack([d["Country"], d["predicted"], d["residual"], d["Cluster"]], axis=1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
                 f"{get_label(x_col)}: %{{x}}<br>"
                 f"{get_label(y_col)}: %{{y}}<br>"
                 "Expected: %{customdata[1]:.2f}<br>"
-                "Residual: %{customdata[2]:.2f}<extra></extra>"
+                "Residual: %{customdata[2]:.2f}<br>"
+                "Cluster: %{customdata[3]}<extra></extra>"
             ),
         )
     )
@@ -186,13 +199,14 @@ def build_scatter(
             text=under["Country"],
             textposition="top center",
             textfont=dict(size=10, weight=300),
-            customdata=np.stack([under["Country"], under["predicted"], under["residual"]], axis=1),
+            customdata=np.stack([under["Country"], under["predicted"], under["residual"], under["Cluster"]], axis=1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
                 f"{get_label(x_col)}: %{{x}}<br>"
                 f"{get_label(y_col)}: %{{y}}<br>"
                 "Expected: %{customdata[1]:.2f}<br>"
-                "Residual: %{customdata[2]:.2f}<extra></extra>"
+                "Residual: %{customdata[2]:.2f}<br>"
+                "Cluster: %{customdata[3]}<extra></extra>"
             ),
         )
     )
@@ -207,13 +221,14 @@ def build_scatter(
             text=over["Country"],
             textposition="top center",
             textfont=dict(size=10, weight=300),
-            customdata=np.stack([over["Country"], over["predicted"], over["residual"]], axis=1),
+            customdata=np.stack([over["Country"], over["predicted"], over["residual"], over["Cluster"]], axis=1),
             hovertemplate=(
                 "<b>%{customdata[0]}</b><br>"
                 f"{get_label(x_col)}: %{{x}}<br>"
                 f"{get_label(y_col)}: %{{y}}<br>"   
                 "Expected: %{customdata[1]:.2f}<br>"
-                "Residual: %{customdata[2]:.2f}<extra></extra>"
+                "Residual: %{customdata[2]:.2f}<br>"
+                "Cluster: %{customdata[3]}<extra></extra>"
             ),
         )
     )
@@ -374,10 +389,8 @@ def interactive_parallel_coords(
         required_cols.append(country_col)
     d = d.dropna(subset=required_cols)
     
-    # Map clusters to numeric values
-    cluster_labels = sorted(d[cluster_col].unique())
-    cluster_to_num = {c: i for i, c in enumerate(cluster_labels)}
-    d['cluster_numeric'] = d[cluster_col].map(cluster_to_num)
+    # Map clusters to numeric values (sorted to ensure consistent ordering)
+    cluster_labels = sorted(d['Cluster_numeric'].unique())
 
     # Build dimensions for parallel coordinates
     dimensions = []
@@ -394,10 +407,10 @@ def interactive_parallel_coords(
     dimensions.append(
         dict(
             label="Cluster",
-            values=d['cluster_numeric'],
-            tickvals=list(range(len(cluster_labels))),
-            ticktext=[str(c) for c in cluster_labels],
-            range=[0, len(cluster_labels) - 1],
+            values=d['Cluster_numeric'],
+            tickvals=sorted(d['Cluster_numeric'].unique()),
+            ticktext=[str(c) for c in sorted(d['Cluster_numeric'].unique())],
+            range=[min(d['Cluster_numeric']), max(d['Cluster_numeric'])],
         )
     )
     
@@ -405,11 +418,11 @@ def interactive_parallel_coords(
     fig = go.Figure(
         data=go.Parcoords(
             line=dict(
-                color=d['cluster_numeric'],
-                colorscale = ["rgba(27,158,119,1)", "rgba(217,95,2,1)", "rgba(117,112,179,1)", "rgba(231,41,138,1)"],
+                color=d['Cluster_numeric'],
+                colorscale = ["rgba(231,41,138,1)", "rgba(217,95,2,1)", "rgba(27,158,119,1)"],
                 showscale=True,
                 cmin=0,
-                cmax=len(cluster_labels) - 1,
+                cmax=2,
                 colorbar=dict(
                     title=dict(
                         text="Cluster",
@@ -686,9 +699,29 @@ layout = dbc.Container(
                                                 style={"height": "550px"},
                                                 config={"displayModeBar": True},
                                             ),
-                                            md=12
+                                            md=12,
+                                            width = 12
+                                        ),
+                                        dbc.Col(
+                                            dbc.ListGroup(
+                                                [
+                                                    dbc.ListGroupItem(
+                                                    [
+                                                        dbc.Badge(str(cluster_num), color = color, style={"backgroundColor": color, "color": "white", "marginRight": "0.75em"}),
+                                                        label
+                                                    ],
+                                                    className="d-flex align-items-center"
+                                                )
+                                                for cluster_num, label in cluster_labels.items()
+                                                for color in [cluster_colors[cluster_num]]
+                                                ],
+                                                horizontal = True,
+                                                className = "mt-3",
+                                            ),
+                                            width = "auto"
                                         )
-                                    ]
+                                    ],
+                                    justify="center",
                                 )
                             ),
                         ],
@@ -697,7 +730,7 @@ layout = dbc.Container(
                     md=12,
                     width = 12
                 ),
-            ]
+            ],
         )
     ],
     fluid=True,

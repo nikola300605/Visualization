@@ -89,6 +89,11 @@ def create_development_clusters_without_analysis(df: pd.DataFrame, n_clusters: i
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     df_clean['Cluster'] = kmeans.fit_predict(scaled_data)
 
+    # Reorder clusters by mean Median_Age (descending) so cluster 0 is always most developed
+    cluster_order = df_clean.groupby('Cluster')['Median_Age'].mean().sort_values(ascending=False).index
+    cluster_mapping = {old_cluster: new_cluster for new_cluster, old_cluster in enumerate(cluster_order)}
+    df_clean['Cluster'] = df_clean['Cluster'].map(cluster_mapping)
+
     return df.merge(df_clean[['ISO3', 'Cluster']], on='ISO3')
 
 

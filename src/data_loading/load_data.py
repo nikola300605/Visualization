@@ -1,8 +1,14 @@
 from src.data_preprocessing.preprocessing import load_data, load_external_data, clean_country_names, merge_data, clean_demographics_data, clean_economy_data, clean_geography_data, clean_government_data, clean_transportation_data, derive_new_metrics, clean_communications_data
-from src.components.clustering import create_development_clusters_without_analysis
+from src.components.clustering import create_development_clusters_with_analysis, create_development_clusters_without_analysis
 import pandas as pd
 
 def load_data_into_df():
+    cluster_map = {
+        0: "Matured Economies",
+        1: "Emerging Growth Economies",
+        2: "Developing Economies"
+    }
+
     # load fresh copy of raw csvs each time to avoid mutating a shared module-level dict
     data_dict = load_data()
 
@@ -44,14 +50,17 @@ def load_data_into_df():
         right_on="ISO3"
     )
     merged_data = derive_new_metrics(merged_data)
-    merged_data = create_development_clusters_without_analysis(merged_data, n_clusters=4)
+    merged_data = create_development_clusters_without_analysis(merged_data, n_clusters=3)
 
     for col in merged_data.columns:
         print(col, " - ", merged_data[col].dtype)
 
+    merged_data['Cluster_numeric'] = merged_data['Cluster']
+    merged_data['Cluster'] = merged_data['Cluster'].map(cluster_map)
+
     return merged_data
 
-df = load_data_into_df()
+""" df = load_data_into_df()
 print(df['Unemployment_Rate_percent'].isna().sum())
 features = [
         'Population_Growth_Rate_(percentage)',
@@ -67,7 +76,7 @@ missing_pct = df_clusters.isna().sum() / len(df) * 100
 print(missing_pct)
 
 df_edited = df.copy()
-df_clustered = create_development_clusters_without_analysis(df_edited, 4)
+df_clustered = create_development_clusters_with_analysis(df_edited, 3)
 
 dims = [
         "Real_GDP_per_Capita_USD",
@@ -75,4 +84,4 @@ dims = [
         "Total_Literacy_Rate [%]",
         "Expected_Years_of_Schooling_(years)",
         "Youth_Unemployment_Rate_percent",
-    ]
+    ] """
