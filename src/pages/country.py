@@ -474,12 +474,26 @@ def update_country_header(search, store_data):
     country = safe_get(row, "Country") or iso3
     capital = safe_get(row, "Capital")
     govt_type = safe_get(row, "Government_Type")
+
+    region = safe_get(row, "Region") 
+    cluster = safe_get(row, "Cluster")
+
     header_text = f"ISO3: {iso3}"
     if capital:
         header_text += f" | Capital: {capital}"
     if govt_type:
         header_text += f" | {govt_type}"
-    return country, header_text
+
+    # Compose small inline meta to display next to the country name
+    region_text = f"Region: {region}" if region else "Region: Unknown"
+    cluster_text = f"Cluster: {cluster}" if cluster else "Cluster: Unknown"
+
+    title_children = [
+        html.Span(country),
+        html.Small(f"  — {region_text} | {cluster_text}", className="text-muted ms-3"),
+    ]
+
+    return title_children, header_text
 
 # endregion
 
