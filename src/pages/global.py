@@ -3,12 +3,13 @@ import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from dash import dcc, html, callback, Input, Output
 from src.data_loading.load_data import load_data_into_df
 from src.components.filter import get_label
-import plotly.express as px
 
 dash.register_page(__name__, path="/global", name="Global", order=1)
+
 
 DF = load_data_into_df()
 
@@ -27,6 +28,7 @@ cluster_colors = {
 def _numeric_cols(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c != "Country" and pd.api.types.is_numeric_dtype(df[c])]
 
+
 ECON_COLS = [
     "Real_GDP_per_Capita_USD",
     "Real_GDP_PPP_billion_USD",
@@ -41,6 +43,7 @@ ECON_COLS = [
     "Unemployment_Rate_percent",
     "Youth_Unemployment_Rate_percent",
 ]
+
 
 SOCIAL_COLS = [
     "Life_Expectancy_at_Birth_(years)",
@@ -58,6 +61,7 @@ SOCIAL_COLS = [
     "Death_Rate",
 ]
 
+
 LEADERBOARD_METRICS = [
     "Real_GDP_per_Capita_USD",
     "Human_Development_Index_(value)",
@@ -68,12 +72,14 @@ LEADERBOARD_METRICS = [
     "broadband_fixed_subscriptions_rate",
 ]
 
+
 LOWER_IS_BETTER_LEADERBOARD = {
     "Infant_Mortality_Rate",
     "Unemployment_Rate_percent",
     "Population_Below_Poverty_Line_percent",
     "Death_Rate",
 }
+
 
 LOWER_IS_BETTER = {
     "Population_Below_Poverty_Line_percent",
@@ -83,6 +89,7 @@ LOWER_IS_BETTER = {
     "Adolescent_Birth_Rate_(births_per_1,000_women_ages_15-19)",
     "Death_Rate",
 }
+
 
 CORR_COLS = [
     "Real_GDP_per_Capita_USD",
@@ -95,14 +102,16 @@ CORR_COLS = [
     "Median_Age",
 ]
 
+# Default columns to use in parallel coordinates plots across pages could lunc hteh app otherwise
 PARALLEL_COORD_COLS = [
     "Real_GDP_per_Capita_USD",
-    "Life_Expectancy_at_Birth_(years)",
-    "Expected_Years_of_Schooling_(years)",
-    "Population_Below_Poverty_Line_percent",
-    "Median_Age",
     "Human_Development_Index_(value)",
+    "Life_Expectancy_at_Birth_(years)",
+    "Infant_Mortality_Rate",
     "Total_Fertility_Rate",
+    "internet_penetration_rate",
+    "road_density_log",
+    "Population_Below_Poverty_Line_percent",
 ]
 
 if not ECON_COLS:
@@ -110,9 +119,11 @@ if not ECON_COLS:
 if not SOCIAL_COLS:
     SOCIAL_COLS = _numeric_cols(DF)
 
+
 DEFAULT_X = "Real_GDP_per_Capita_USD"
 DEFAULT_Y = "Life_Expectancy_at_Birth_(years)"
 DEFAULT_LEADERBOARD_METRIC = "Real_GDP_per_Capita_USD"
+
 
 def build_scatter(
     df: pd.DataFrame,
@@ -246,6 +257,7 @@ def build_scatter(
 
     return fig
 
+
 def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
     data = df[cols].dropna()
     corr = data.corr()
@@ -292,6 +304,7 @@ def build_correlation_heatmap(df: pd.DataFrame, cols: list[str]) -> go.Figure:
 
     return fig
 
+
 def build_global_ranking(df: pd.DataFrame, metric: str, top_n: int = 50, show_bottom: bool = False) -> go.Figure:
     data = df[["Country", metric]].copy().dropna()
     
@@ -301,48 +314,47 @@ def build_global_ranking(df: pd.DataFrame, metric: str, top_n: int = 50, show_bo
         return fig
     
     values = data[metric].astype(float)
-    if metric in LOWER_IS_BETTER_LEADERBOARD:
-        values = -values
+    data["Raw_Value"] = values
     
-    data['Score'] = values
-    
-    min_val, max_val = data['Score'].min(), data['Score'].max()
-    if max_val > min_val:
-        data['Score'] = (data['Score'] - min_val) / (max_val - min_val) * 100
-    
+    # Choose ordering based on top/bottom, but we'll always display largest at the top
     if show_bottom:
-        ranking = data.sort_values('Score', ascending=True).reset_index(drop=True)  # Lowest first
-        title_suffix = f" BOTTOM {top_n}"
-        color_scale = 'Reds'  # Red for "bad" performance
+        ranking = data.sort_values("Raw_Value", ascending=True).reset_index(drop=True)  # smallest first
+        title_suffix = f" SMALLEST {top_n}"
+        color_scale = "Reds_r"
     else:
-        ranking = data.sort_values('Score', ascending=False).reset_index(drop=True)  # Highest first
-        title_suffix = f" TOP {top_n}"
-        color_scale = 'Viridis'  # Green for "good" performance
+        ranking = data.sort_values("Raw_Value", ascending=False).reset_index(drop=True)  # biggest first
+        title_suffix = f" BIGGEST {top_n}"
+        color_scale = "Greens"
     
+    # Take only top_n rows
+    ranking = ranking.head(top_n)
+
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=ranking['Country'][:top_n],
-        x=ranking['Score'][:top_n],
-        orientation='h',
-        marker=dict(
-            color=ranking['Score'][:top_n], 
-            colorscale=color_scale, 
-            colorbar=dict(title="Score (0-100)")
-        ), 
-        text=ranking['Score'][:top_n].round(1),
-        textposition='auto',
-        hovertemplate='<b>%{y}</b><br>Score: %{x:.1f}<br>Raw: %{customdata:.2f}<extra></extra>',
-        customdata=ranking[metric][:top_n].round(2)
-    ))
+    fig.add_trace(
+        go.Bar(
+            y=ranking["Country"],
+            x=ranking["Raw_Value"],
+            orientation="h",
+            marker=dict(
+                color=ranking["Raw_Value"],
+                colorscale=color_scale,
+                colorbar=dict(title="Value"),
+            ),
+            text=[f"{v:.2f}" for v in ranking["Raw_Value"]],
+            textposition="auto",
+            hovertemplate="<b>%{y}</b><br>Value: %{x:.2f}<extra></extra>",
+        )
+    )
     
     fig.update_layout(
-        title=f"🏆 {metric.replace('_', ' ').title()}{title_suffix} Countries",
-        yaxis_categoryorder='array', 
-        yaxis_categoryarray=ranking['Country'][:top_n].tolist(),
-        height=600, 
-        xaxis_title="Normalized Score (0-100)",
+        title=f"📊 {metric.replace('_', ' ').title()}{title_suffix} Values",
+        # Largest at top: reverse yaxis
+        yaxis=dict(autorange="reversed"),
+        height=600,
+        xaxis_title=f"{metric.replace('_', ' ').title()} (log scale)",
+        xaxis=dict(type="log"),
         margin=dict(l=250, r=20, t=60, b=20),
-        font=dict(size=12)
+        font=dict(size=12),
     )
     
     return fig
@@ -643,11 +655,11 @@ layout = dbc.Container(
                                         dbc.Label("Top/Bottom N"),
                                         dcc.Slider(
                                             id="ranking-top-n",
-                                            min=20,
-                                            max=100,
-                                            step=10,
-                                            value=50,
-                                            marks={20: "20", 50: "50", 100: "100"},
+                                            min=5,
+                                            max=20,
+                                            step=1,
+                                            value=10,
+                                            marks={5: "5", 10: "10", 15: "15", 20: "20"},
                                         ),
                                     ], md=4),
                                     dbc.Col([
@@ -736,6 +748,7 @@ layout = dbc.Container(
     fluid=True,
 )
 
+
 # Existing callbacks (unchanged)
 @callback(
     Output("global-scatter", "figure"),
@@ -748,6 +761,7 @@ def update_global_scatter(x_col: str, y_col: str, options: list[str], top_n: int
     use_log_x = "logx" in (options or [])
     show_reg = "reg" in (options or [])
     return build_scatter(DF, x_col, y_col, use_log_x, show_reg, int(top_n))
+
 
 @callback(
     Output("global-ranking", "figure"),
