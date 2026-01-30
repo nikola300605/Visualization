@@ -495,7 +495,7 @@ def update_country_header(search, store_data):
 
     title_children = [
         html.Span(country),
-        html.Small(f"  — {region_text} | {cluster_text}", className="text-muted ms-3"),
+        html.Small(f"{region_text} | {cluster_text}", className="text-muted ms-3"),
     ]
 
     return title_children, header_text
