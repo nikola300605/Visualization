@@ -65,7 +65,7 @@ SOCIAL_COLS = [
 LEADERBOARD_METRICS = [
     "Real_GDP_per_Capita_USD",
     "Human_Development_Index_(value)",
-    "road_density_log",
+    "Total_Fertility_Rate",
     "internet_penetration_rate",
     "Life_Expectancy_at_Birth_(years)",
     "Total_Literacy_Rate [%]",

@@ -292,6 +292,7 @@ def layout(**kwargs):
                                                     id="ctx-x-dropdown",
                                                     options=[{"label": metric_label(c), "value": c} for c in ECON_COLS],
                                                     value=DEFAULT_CTX_X,
+                                                    style = {"fontSize" : "12px"}
                                                 ),
                                                 md=4,
                                                 className="mb-3",
@@ -301,6 +302,7 @@ def layout(**kwargs):
                                                     id="ctx-y-dropdown",
                                                     options=[{"label": metric_label(c), "value": c} for c in SOCIAL_COLS],
                                                     value=DEFAULT_CTX_Y,
+                                                    style = {"fontSize" : "12px"}
                                                 ),
                                                 md=4,
                                                 className="mb-3",
