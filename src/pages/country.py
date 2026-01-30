@@ -292,7 +292,8 @@ def layout(**kwargs):
                                                     id="ctx-x-dropdown",
                                                     options=[{"label": metric_label(c), "value": c} for c in ECON_COLS],
                                                     value=DEFAULT_CTX_X,
-                                                    style = {"fontSize" : "12px"}
+                                                    style = {"fontSize" : "12px"},
+                                                    className = "dbc"
                                                 ),
                                                 md=4,
                                                 className="mb-3",
@@ -302,7 +303,8 @@ def layout(**kwargs):
                                                     id="ctx-y-dropdown",
                                                     options=[{"label": metric_label(c), "value": c} for c in SOCIAL_COLS],
                                                     value=DEFAULT_CTX_Y,
-                                                    style = {"fontSize" : "12px"}
+                                                    style = {"fontSize" : "12px"},
+                                                    className = "dbc"
                                                 ),
                                                 md=4,
                                                 className="mb-3",
@@ -334,6 +336,7 @@ def layout(**kwargs):
                                     value=[],
                                     multi=True,
                                     clearable=False,
+                                    className="dbc"
                                 ),
                                 html.Small("", id="parcoords-warning", className="text-warning d-block"),
                                 dcc.Loading(dcc.Graph(id="linked-parcoords"), type="default"),
@@ -1410,7 +1413,7 @@ def _update_parcoords_options(store_data):
     # choose default value as intersection of PARCOORDS_DEFAULT and available, preserving order
     default_vals = [c for c in PARCOORDS_DEFAULT if c in available]
     # Reduce default metric count to 5 (or 6 if you prefer)
-    DEFAULT_PARCOORDS_METRIC_COUNT = 5
+    DEFAULT_PARCOORDS_METRIC_COUNT = 4
     if default_vals:
         value = default_vals[:DEFAULT_PARCOORDS_METRIC_COUNT]
     else:

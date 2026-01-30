@@ -105,6 +105,10 @@ COLUMN_LABELS = {
     # Fiscal year info
     "Fiscal_Year_Start_Date": "Fiscal Year Start",
     "Fiscal_Year_End_Date": "Fiscal Year End",
+
+    # Categorical / grouping columns
+    "Region": "Region",
+    "Cluster": "Development Cluster",
 }
 
 
@@ -151,12 +155,23 @@ def filter_df(df: pd.DataFrame, active_filters: dict, default_filters: dict) -> 
                 cond = df[col].isna() | ((df[col] >= low) & (df[col] <= high))
 
         else:
-            if is_active:
-                active_filter_dict[col] = val
-                missing_by_filter[col] = set(df[df[col].isna()]["ISO3"].tolist())
-                cond = (df[col] >= val)
+            # Categorical filters (e.g., Region, Cluster) use equality instead of numeric thresholds
+            if col in ("Region", "Cluster") or df[col].dtype == "object":
+                if is_active and val is not None:
+                    active_filter_dict[col] = val
+                    missing_by_filter[col] = set(df[df[col].isna()]["ISO3"].tolist())
+                    cond = (df[col] == val)
+                else:
+                    # No active categorical filter -> do not restrict
+                    cond = True
             else:
-                cond = df[col].isna() | (df[col] >= val)
+                # Numeric threshold filter (single-sided)
+                if is_active:
+                    active_filter_dict[col] = val
+                    missing_by_filter[col] = set(df[df[col].isna()]["ISO3"].tolist())
+                    cond = (df[col] >= val)
+                else:
+                    cond = df[col].isna() | (df[col] >= val)
 
         mask &= cond
 

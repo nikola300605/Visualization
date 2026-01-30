@@ -347,7 +347,7 @@ def build_global_ranking(df: pd.DataFrame, metric: str, top_n: int = 50, show_bo
     )
     
     fig.update_layout(
-        title=f"📊 {metric.replace('_', ' ').title()}{title_suffix} Values",
+        title=f"{metric.replace('_', ' ').title()}{title_suffix} Values",
         # Largest at top: reverse yaxis
         yaxis=dict(autorange="reversed"),
         height=600,
@@ -521,6 +521,119 @@ def interactive_parallel_coords(
     
     return fig
 
+def build_cluster_radar(
+    df: pd.DataFrame,
+    indicators: list[str],
+    cluster_col: str = "Cluster",
+    cluster_order: list[str] | None = None,
+    color_map: dict[str, str] | None = None,
+    normalize: bool = True,
+) -> go.Figure:
+    """
+    Build a radar chart comparing clusters across selected indicators.
+
+    Parameters
+    ----------
+    df : DataFrame
+        Source data (e.g. DF in global.py) with a 'Cluster' column.
+    indicators : list of str
+        Column names to use as radar axes.
+    cluster_col : str
+        Name of the column containing cluster labels.
+    cluster_order : list of str or None
+        Explicit order of clusters; if None, inferred from data.
+    color_map : dict or None
+        Optional mapping {cluster_label: color}; if None, a default is used.
+    normalize : bool
+        If True, min-max normalizes each indicator to [0, 1] before plotting.
+
+    Returns
+    -------
+    go.Figure
+        Plotly radar figure.
+    """
+    # Keep only necessary columns and drop rows with missing values on indicators/cluster
+    cols = indicators + [cluster_col]
+    d = df[cols].dropna(subset=cols).copy()
+
+    # Determine cluster order
+    if cluster_order is None:
+        cluster_order = list(d[cluster_col].dropna().unique())
+
+    # Default colors if none provided
+    if color_map is None:
+        palette = ["#e7298a", "#d95f02", "#2ca02c", "#1f77b4", "#7570b3"]
+        color_map = {cl: palette[i % len(palette)] for i, cl in enumerate(cluster_order)}
+
+    # Compute cluster means for each indicator
+    means = d.groupby(cluster_col)[indicators].mean()
+
+    # Optional min-max normalization per indicator
+    if normalize:
+        col_min = means.min(axis=0)
+        col_max = means.max(axis=0)
+        denom = (col_max - col_min).replace(0, np.nan)  # avoid division by zero
+        norm_means = (means - col_min) / denom
+        norm_means = norm_means.fillna(0.5)  # if constant column, center at 0.5
+    else:
+        norm_means = means.copy()
+
+    # Use human-readable labels on axes if available
+    try:
+        axis_labels = [get_label(col) for col in indicators]
+    except Exception:
+        axis_labels = indicators
+
+    fig = go.Figure()
+
+    for cl in cluster_order:
+        if cl not in norm_means.index:
+            continue
+
+        r_vals = norm_means.loc[cl, indicators].values.tolist()
+        # Close the radar loop
+        r_vals_closed = r_vals + [r_vals[0]]
+        theta_closed = axis_labels + [axis_labels[0]]
+
+        fig.add_trace(
+            go.Scatterpolar(
+                r=r_vals_closed,
+                theta=theta_closed,
+                fill="toself",
+                name=str(cl),
+                line=dict(color=color_map.get(cl, "#999999"), width=2),
+                opacity=0.6,
+                hovertemplate=(
+                    "<b>%{theta}</b><br>"
+                    f"Cluster: <b>{cl}</b><br>"
+                    "Score (0–1): %{r:.2f}<extra></extra>"
+                ),
+            )
+        )
+
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 1] if normalize else None,
+                tickfont=dict(size=10),
+            ),
+            angularaxis=dict(
+                tickfont=dict(size=11),
+            ),
+        ),
+        showlegend=True,
+        legend_title_text="Cluster",
+        margin=dict(l=40, r=40, t=40, b=40),
+        title=dict(
+            text="Cluster Profiles Across Selected Indicators",
+            x=0.5,
+            xanchor="center",
+        ),
+    )
+
+    return fig
+
 layout = dbc.Container(
     [
         html.H1("Global analysis", className="mb-3"),
@@ -639,7 +752,7 @@ layout = dbc.Container(
                 dbc.Col(
                     dbc.Card(
                         [
-                            dbc.CardHeader("🏆 Global Leaderboard"),
+                            dbc.CardHeader("Global Leaderboard"),
                             dbc.CardBody([
                                 dbc.Row([
                                     dbc.Col([
@@ -692,21 +805,14 @@ layout = dbc.Container(
                 dbc.Col(
                     dbc.Card(
                         [
-                            dbc.CardHeader("🌐 Parallel Coordinates of Development Indicators"),
+                            dbc.CardHeader("Parallel Coordinates and Radar Graphs of Development Indicators for Clusters"),
                             dbc.CardBody(
                                 dbc.Row(
                                     [
                                         dbc.Col(
                                             dcc.Graph(
                                                 id="global-parallel-coords",
-                                                figure=interactive_parallel_coords(
-                                                    DF,
-                                                    dims=PARALLEL_COORD_COLS,
-                                                    cluster_col="Cluster",
-                                                    country_col="Country",
-                                                    title="Development Indicators by Cluster",
-                                                    height=500,
-                                                ),
+                                                figure=None,
                                                 className="dbc",
                                                 style={"height": "550px"},
                                                 config={"displayModeBar": True},
@@ -730,7 +836,35 @@ layout = dbc.Container(
                                                 horizontal = True,
                                                 className = "mt-3",
                                             ),
-                                            width = "auto"
+                                            width = 6
+                                        ),
+                                        dbc.Col(
+                                            dcc.Dropdown(
+                                                id="global-parcoords-cluster-axes",
+                                                options = [{
+                                                    "label" : "Development Focus",
+                                                    "value" : "Development_Focus"
+                                                },
+                                                {
+                                                    "label" : "Pressure & Infrastructure",
+                                                    "value" : "Pressure_Infrastructure"
+                                                }
+                                                ],
+                                                value = "Development_Focus",
+                                                clearable = False,
+                                                searchable=False,
+                                                className="dbc mt-3",
+                                            ),
+                                            width = 6   
+                                        ),
+                                        dbc.Col(
+                                            dcc.Graph(
+                                                className="dbc mt-4",
+                                                id="global-cluster-radar",
+                                                figure=None,
+                                                style={"height": "550px"},
+                                                config={"displayModeBar": True}
+                                            )
                                         )
                                     ],
                                     justify="center",
@@ -820,3 +954,45 @@ def create_update_scatterplot(clickData):
     )
 
     return fig
+
+@callback(
+    Output("global-parallel-coords", "figure"),
+    Output("global-cluster-radar", "figure"),
+    Input("global-parcoords-cluster-axes", "value"),
+)
+
+def update_global_parallel_coords(cluster_axes: str):
+    if cluster_axes == "Development_Focus":
+        dims = [
+            "Human_Development_Index_(value)",
+            "Expected_Years_of_Schooling_(years)",
+            "Total_Literacy_Rate [%]",
+            "Life_Expectancy_at_Birth_(years)",
+            "Real_GDP_per_Capita_USD",
+        ]
+    elif cluster_axes == "Pressure_Infrastructure":
+        dims = [
+            "Population_Below_Poverty_Line_percent",
+            "Infant_Mortality_Rate",
+            "Total_Fertility_Rate",
+            "internet_penetration_rate",
+            "road_density_log",
+        ]
+    
+    else:
+        return dash.no_update  # Fallback to default
+    cluster_color_map = {
+    cluster_labels[k]: v
+    for k, v in cluster_colors.items()
+}
+    fig = interactive_parallel_coords(
+        DF,
+        dims=dims,
+        cluster_col="Cluster",
+        country_col="Country",
+        title="Development Indicators by Cluster",
+        height=500,
+    )
+
+    fig2 = build_cluster_radar(DF, indicators=dims, cluster_col="Cluster", color_map=cluster_color_map)
+    return fig, fig2

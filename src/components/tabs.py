@@ -44,7 +44,10 @@ DEFAULT_FILTERS = {
     "internet_penetration_rate": [0, 100],
     "electricity_access_percent": [0, 100],
     "Agricultural_Land_%": [0, 100],
-    "Arable_Land (%% of Total Agricultural Land)_%": [0, 100]
+    "Arable_Land (%% of Total Agricultural Land)_%": [0, 100],
+    # Categorical filters (no range) – None means "no filter"
+    "Region": None,
+    "Cluster": None,
 }
 
 def tab_layout():
@@ -462,6 +465,46 @@ def filter_content():
         ]
     )
 
+    # New tab: categorical filters for Region and Development Cluster
+    region_cluster_filters = dbc.Row(
+        [
+            dbc.Col(
+                [
+                    dbc.Label("Region", className="ps-4 pe-4"),
+                    dcc.Dropdown(
+                        id="Region",
+                        options=[
+                            {"label": r, "value": r}
+                            for r in sorted(df["Region"].dropna().unique())
+                        ],
+                        placeholder="All regions",
+                        value=None,
+                        className="dbc mb-4 mt-4",
+                    ),
+                ],
+                width=6,
+                className="dbc mb-4 mt-4",
+            ),
+            dbc.Col(
+                [
+                    dbc.Label("Development Cluster", className="ps-4 pe-4"),
+                    dcc.Dropdown(
+                        id="Cluster",
+                        options=[
+                            {"label": c, "value": c}
+                            for c in sorted(df["Cluster"].dropna().unique())
+                        ],
+                        placeholder="All clusters",
+                        value=None,
+                        className="dbc mb-4 mt-4",
+                    ),
+                ],
+                width=6,
+                className="dbc mb-4 mt-4",
+            ),
+        ]
+    )
+
 
     return dbc.Row(
         [
@@ -473,6 +516,7 @@ def filter_content():
                             dbc.Tab([human_filters], label="Human Capital & Societal Outcomes"),
                             dbc.Tab([demography_filters], label="Demography & Population Dynamics"),
                             dbc.Tab([infrastructure_filters], label="Infrastructure & Geography"),
+                            dbc.Tab([region_cluster_filters], label="Region & Cluster"),
                         ]
                     )
                 ],
@@ -577,7 +621,9 @@ def _norm(v):
     State("internet_penetration_rate", "value"),
     State("electricity_access_percent", "value"),
     State("Agricultural_Land_%", "value"),
-    State("Arable_Land (%% of Total Agricultural Land)_%", "value")
+    State("Arable_Land (%% of Total Agricultural Land)_%", "value"),
+    State("Region", "value"),
+    State("Cluster", "value"),
 )   
 def apply_reset_filter(
     activate_clicks,
@@ -597,7 +643,9 @@ def apply_reset_filter(
     internet_pen,
     elec_access,
     agri_land_perc,
-    arable_land_perc
+    arable_land_perc,
+    region_value,
+    cluster_value,
 ):
     norm_defaults = {k: _norm(v) for k, v in DEFAULT_FILTERS.items()}
     
@@ -630,7 +678,9 @@ def apply_reset_filter(
             "internet_penetration_rate": internet_pen,
             "electricity_access_percent": elec_access,
             "Agricultural_Land_%": agri_land_perc,
-            "Arable_Land (%% of Total Agricultural Land)_%": arable_land_perc
+            "Arable_Land (%% of Total Agricultural Land)_%": arable_land_perc,
+            "Region": region_value,
+            "Cluster": cluster_value,
         }
 
         norm_changes = {k: _norm(v) for k, v in changes_dict.items()}
@@ -676,6 +726,8 @@ def apply_reset_filter(
     Output("electricity_access_percent", "value"),
     Output("Agricultural_Land_%", "value"),
     Output("Arable_Land (%% of Total Agricultural Land)_%", "value"),
+    Output("Region", "value"),
+    Output("Cluster", "value"),
     Input("reset-button", "n_clicks"),
     prevent_initial_call=True,
 )
@@ -697,6 +749,8 @@ def reset_all_sliders(n_clicks):
         DEFAULT_FILTERS["electricity_access_percent"],
         DEFAULT_FILTERS["Agricultural_Land_%"],
         DEFAULT_FILTERS["Arable_Land (%% of Total Agricultural Land)_%"],
+        DEFAULT_FILTERS["Region"],
+        DEFAULT_FILTERS["Cluster"],
     )
 
 

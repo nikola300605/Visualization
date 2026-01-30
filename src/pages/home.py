@@ -36,6 +36,13 @@ layout = dbc.Container(
             dismissable=True,
             style={"position": "fixed", "top": 10, "right": 10, "zIndex": 2000},
         ),
+        dbc.Col(
+            html.Div(
+                "Map is interactive – click a country to open its profile.",
+                className="text-center text-muted mb-2",
+            ),
+            width=12,
+        ),
         dbc.Col(dcc.Graph(id="graph", figure=fig_map, className="dbc"),
                 width=12, className="mb-4"),
         

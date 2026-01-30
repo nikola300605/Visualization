@@ -39,7 +39,7 @@ def load_data_into_df():
 
     merged_data = merged_data[~removed_countries]
 
-
+    merged_data = add_region_column(merged_data)
     merged_data = clean_country_names(merged_data)
     merged_data = merged_data.drop(columns=["Population_Growth_Rate [%]"])
 
@@ -58,7 +58,7 @@ def load_data_into_df():
 
     merged_data['Cluster_numeric'] = merged_data['Cluster']
     merged_data['Cluster'] = merged_data['Cluster'].map(cluster_map)
-    merged_data = add_region_column(merged_data)
+    
 
     return merged_data
 
