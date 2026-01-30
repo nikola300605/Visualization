@@ -1,14 +1,22 @@
 import urllib.parse
 import numpy as np
 import pandas as pd
+import re
 import plotly.graph_objects as go
-import plotly.express as px
 
 import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html, callback, Input, Output
+from dash import dcc, html, callback, Input, Output, State
 
 from src.data_loading.load_data import load_data_into_df
+
+"""
+Linked Exploration Finalization
+- fixed duplicate IDs (single `ctx-scatter` in Linked Exploration)
+- linked scatter ↔ parcoords brushing via persistent store state
+- improved metric options + warning for >10 dims
+- selection summary uses current X/Y
+"""
 
 dash.register_page(__name__, path="/country", name="Country", order=10)
 
@@ -151,6 +159,19 @@ METRIC_SETS = {
     "Infrastructure": INFRA_COLS,
 }
 
+PARCOORDS_DEFAULT = [
+    "Real_GDP_per_Capita_USD",
+    "Human_Development_Index_(value)",
+    "Life_Expectancy_at_Birth_(years)",
+    "Infant_Mortality_Rate",
+    "Total_Fertility_Rate",
+    "internet_penetration_rate",
+    "road_density_log",
+    "Population_Below_Poverty_Line_percent",
+]
+
+PARCOORDS_MAX = 10
+
 # endregion
 
 # region HELPER FUNCTIONS
@@ -160,7 +181,7 @@ def metric_label(col):
     if col in METRIC_LABELS:
         return METRIC_LABELS[col]
     # fallback to replace underscores and shii
-    label = col.replace("_", " ").replace("  ", " ").strip()
+    label = col.replace("_", " ").replace("  ", " ").replace("[%]", "(%)").strip()
     return label
 
 
@@ -231,20 +252,190 @@ def percentile_of_country(df, col, iso3):
 
 # region LAYOUT
 
-layout = dbc.Container(
-    [
+
+# --- Static layout: always include all components so Dash can validate callbacks ---
+def layout(**kwargs):
+    return dbc.Container([
         dcc.Store(id="country-df-store", data=None, storage_type="memory"),
+        dcc.Store(id="linked-selection-store", data=None, storage_type="memory"),
         dbc.Row(
-            dbc.Col(
-                [
-                    html.H2("Country Detail", className="mb-3"),
-                    dcc.Loading(
-                        html.Div(id="country-page-content"),
-                        type="default",
+            dbc.Col([
+                html.H2("Country Detail", className="mb-3"),
+                dbc.Card(
+                    dbc.CardBody([
+                        html.H2(id="country-header-title", className="mb-2"),
+                        html.Small(id="country-header-meta", className="text-muted"),
+                    ]),
+                    className="mb-4",
+                ),
+                dbc.Card(
+                    dbc.CardBody([
+                        html.H5("Key Metrics", className="mb-3"),
+                        html.Div(id="snapshot-kpis"),
+                    ]),
+                    className="mb-4",
+                ),
+                dbc.Card(
+                    dbc.CardBody([
+                        html.H5("Linked Exploration (brush to filter)", className="mb-3"),
+                        html.Small(
+                            "Lasso/box select countries in the scatter to filter the parallel coordinates. Drag ranges in the parallel coordinates to filter the scatter.",
+                            className="text-muted d-block mb-3",
+                        ),
+                        dbc.Row([
+                            dbc.Col([
+                                dbc.Card(
+                                    dbc.CardBody([
+                                        dbc.Row([
+                                            dbc.Col(
+                                                dcc.Dropdown(
+                                                    id="ctx-x-dropdown",
+                                                    options=[{"label": metric_label(c), "value": c} for c in ECON_COLS],
+                                                    value=DEFAULT_CTX_X,
+                                                ),
+                                                md=4,
+                                                className="mb-3",
+                                            ),
+                                            dbc.Col(
+                                                dcc.Dropdown(
+                                                    id="ctx-y-dropdown",
+                                                    options=[{"label": metric_label(c), "value": c} for c in SOCIAL_COLS],
+                                                    value=DEFAULT_CTX_Y,
+                                                ),
+                                                md=4,
+                                                className="mb-3",
+                                            ),
+                                            dbc.Col(
+                                                dcc.Checklist(
+                                                    id="ctx-checklist",
+                                                    options=[
+                                                        {"label": " Log X-axis", "value": "logx"},
+                                                        {"label": " Regression line", "value": "regline"},
+                                                    ],
+                                                    value=["regline"],
+                                                    inline=True,
+                                                ),
+                                                md=4,
+                                                className="mb-3",
+                                            ),
+                                        ]),
+                                        dcc.Loading(dcc.Graph(id="ctx-scatter"), type="default"),
+                                    ]),
+                                    className="mb-3",
+                                ),
+                            ], md=6),
+                            dbc.Col([
+                                html.Label("Metrics for Parallel Coordinates"),
+                                dcc.Dropdown(
+                                    id="parcoords-metrics",
+                                    options=[],
+                                    value=[],
+                                    multi=True,
+                                    clearable=False,
+                                ),
+                                html.Small("", id="parcoords-warning", className="text-warning d-block"),
+                                dcc.Loading(dcc.Graph(id="linked-parcoords"), type="default"),
+                            ], md=6),
+                        ]),
+                        html.Div(id="linked-selection-summary", className="mt-2"),
+                    ]),
+                    className="mb-4",
+                ),
+                dbc.Tabs([
+                    dbc.Tab(
+                        label="Context",
+                        children=[
+                            html.Div("Scatter + controls moved to Linked Exploration above for brushing/linking.", className="mb-4"),
+                            dcc.Loading(
+                                dcc.Graph(id="ctx-percentiles"),
+                                type="default",
+                            ),
+                        ],
+                        className="p-3",
                     ),
-                ],
-                width=12,
-            )
+                    dbc.Tab(
+                        label="Deep Dives",
+                        children=[
+                            dcc.Loading(
+                                dcc.Graph(id="deep-radar"),
+                                type="default",
+                            ),
+                            dbc.Accordion([
+                                dbc.AccordionItem(
+                                    dcc.Loading(
+                                        dcc.Graph(id="demo-bars"),
+                                        type="default",
+                                    ),
+                                    title="Demographic & Labor Pressures",
+                                ),
+                                dbc.AccordionItem(
+                                    dcc.Loading(
+                                        dcc.Graph(id="infra-bars"),
+                                        type="default",
+                                    ),
+                                    title="Infrastructure & Access",
+                                ),
+                            ], className="mt-3"),
+                        ],
+                        className="p-3",
+                    ),
+                    dbc.Tab(
+                        label="Compare",
+                        children=[
+                            dbc.Card(
+                                dbc.CardBody([
+                                    dbc.Row([
+                                        dbc.Col([
+                                            html.Label("Comparison Method"),
+                                            dcc.Dropdown(
+                                                id="compare-method",
+                                                options=[
+                                                    {"label": "Similar GDP per capita", "value": "gdp"},
+                                                    {"label": "Similar HDI", "value": "hdi"},
+                                                    {"label": "Manual Selection", "value": "manual"},
+                                                ],
+                                                value="gdp",
+                                            ),
+                                        ], md=3),
+                                        dbc.Col([
+                                            html.Label("Select Countries", id="manual-label"),
+                                            dcc.Dropdown(
+                                                id="compare-manual",
+                                                multi=True,
+                                                style={"display": "none"},
+                                            ),
+                                        ], md=3),
+                                        dbc.Col([
+                                            html.Label("Metric Category"),
+                                            dcc.Dropdown(
+                                                id="compare-metric-set",
+                                                options=[{"label": k, "value": k} for k in METRIC_SETS.keys()],
+                                                value="Snapshot",
+                                                clearable=False,
+                                            ),
+                                        ], md=3),
+                                        dbc.Col([
+                                            html.Label("Metric"),
+                                            dcc.Dropdown(
+                                                id="compare-metric",
+                                                options=[{"label": metric_label(c), "value": c} for c in METRIC_SETS["Snapshot"]],
+                                                value=METRIC_SETS["Snapshot"][0],
+                                                clearable=False,
+                                            ),
+                                        ], md=3),
+                                    ])
+                                ]),
+                                className="mb-4",
+                            ),
+                            dcc.Loading(
+                                dcc.Graph(id="compare-chart"),
+                                type="default",
+                            ),
+                        ],
+                        className="p-3",
+                    ),
+                ], className="mt-4"),
+            ], width=12),
         )
     ],
     fluid=True,
@@ -254,16 +445,6 @@ layout = dbc.Container(
 
 # region MAIN CALLBACKS
 
-@callback(
-    Output("country-df-store", "data"),
-    Input("url", "search"),
-)
-def load_df_once(search):
-    """Load dataframe once per page visit and store in dcc.Store."""
-    df = load_data_into_df()
-    return df.to_json(date_format="iso", orient="split")
-
-
 def _get_df_from_store(store_data):
     """Helper to deserialize dataframe from store; fallback to loading if None."""
     if store_data is None:
@@ -271,248 +452,37 @@ def _get_df_from_store(store_data):
     return pd.read_json(store_data, orient="split")
 
 
+
+# --- New: header info as separate callback for static layout ---
 @callback(
-    Output("country-page-content", "children"),
-    Input("url", "pathname"),
+    Output("country-header-title", "children"),
+    Output("country-header-meta", "children"),
     Input("url", "search"),
     Input("country-df-store", "data"),
 )
-def render_country_page(pathname, search, store_data):
-    """Render the main country page layout."""
-    if pathname != "/country":
-        return ""
-
+def update_country_header(search, store_data):
     if not search:
-        return dbc.Alert("No country selected. Return to the map.", color="warning")
-
+        return "", ""
     qs = urllib.parse.parse_qs(search.lstrip("?"))
     iso3 = qs.get("iso3", [None])[0]
-
     if not iso3:
-        return dbc.Alert("No country selected. Return to the map.", color="warning")
-
+        return "", ""
     df = _get_df_from_store(store_data)
     row = df[df["ISO3"] == iso3]
-
     if row.empty:
-        return dbc.Alert(f"Unknown ISO3 code: {iso3}", color="danger")
-
+        return f"Unknown ISO3 code: {iso3}", ""
     country = safe_get(row, "Country") or iso3
     capital = safe_get(row, "Capital")
     govt_type = safe_get(row, "Government_Type")
-
-    #Header
     header_text = f"ISO3: {iso3}"
     if capital:
         header_text += f" | Capital: {capital}"
     if govt_type:
         header_text += f" | {govt_type}"
-
-    header = dbc.Card(
-        dbc.CardBody(
-            [
-                html.H2(country, className="mb-2"),
-                html.Small(header_text, className="text-muted"),
-            ]
-        ),
-        className="mb-4",
-    )
-
-    #Snapshot KPIs
-    snapshot = dcc.Loading(
-        dbc.Card(
-            dbc.CardBody(
-                [
-                    html.H5("Key Metrics", className="mb-3"),
-                    html.Div(id="snapshot-kpis"),
-                ]
-            ),
-            className="mb-4",
-        ),
-        type="default",
-    )
-
-    #Tabs - dont touch
-    tabs = dbc.Tabs(
-        [
-            dbc.Tab(
-                label="Context",
-                children=[
-                    dbc.Card(
-                        dbc.CardBody(
-                            [
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            dcc.Dropdown(
-                                                id="ctx-x-dropdown",
-                                                options=[
-                                                    {"label": metric_label(c), "value": c}
-                                                    for c in ECON_COLS
-                                                ],
-                                                value=DEFAULT_CTX_X,
-                                            ),
-                                            md=4,
-                                            className="mb-3",
-                                        ),
-                                        dbc.Col(
-                                            dcc.Dropdown(
-                                                id="ctx-y-dropdown",
-                                                options=[
-                                                    {"label": metric_label(c), "value": c}
-                                                    for c in SOCIAL_COLS
-                                                ],
-                                                value=DEFAULT_CTX_Y,
-                                            ),
-                                            md=4,
-                                            className="mb-3",
-                                        ),
-                                        dbc.Col(
-                                            dcc.Checklist(
-                                                id="ctx-checklist",
-                                                options=[
-                                                    {"label": " Log X-axis", "value": "logx"},
-                                                    {"label": " Regression line", "value": "regline"},
-                                                ],
-                                                value=["regline"],
-                                                inline=True,
-                                            ),
-                                            md=4,
-                                            className="mb-3",
-                                        ),
-                                    ]
-                                )
-                            ]
-                        ),
-                        className="mb-4",
-                    ),
-                    dcc.Loading(
-                        dcc.Graph(id="ctx-scatter"),
-                        type="default",
-                    ),
-                    dcc.Loading(
-                        dcc.Graph(id="ctx-percentiles"),
-                        type="default",
-                    ),
-                ],
-                className="p-3",
-            ),
-            dbc.Tab(
-                label="Deep Dives",
-                children=[
-                    dcc.Loading(
-                        dcc.Graph(id="deep-radar"),
-                        type="default",
-                    ),
-                    dbc.Accordion(
-                        [
-                            dbc.AccordionItem(
-                                dcc.Loading(
-                                    dcc.Graph(id="demo-bars"),
-                                    type="default",
-                                ),
-                                title="Demographic & Labor Pressures",
-                            ),
-                            dbc.AccordionItem(
-                                dcc.Loading(
-                                    dcc.Graph(id="infra-bars"),
-                                    type="default",
-                                ),
-                                title="Infrastructure & Access",
-                            ),
-                        ],
-                        className="mt-3",
-                    ),
-                ],
-                className="p-3",
-            ),
-            dbc.Tab(
-                label="Compare",
-                children=[
-                    dbc.Card(
-                        dbc.CardBody(
-                            [
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            [
-                                                html.Label("Comparison Method"),
-                                                dcc.Dropdown(
-                                                    id="compare-method",
-                                                    options=[
-                                                        {"label": "Similar GDP per capita", "value": "gdp"},
-                                                        {"label": "Similar HDI", "value": "hdi"},
-                                                        {"label": "Manual Selection", "value": "manual"},
-                                                    ],
-                                                    value="gdp",
-                                                ),
-                                            ],
-                                            md=3,
-                                        ),
-                                        dbc.Col(
-                                            [
-                                                html.Label("Select Countries", id="manual-label"),
-                                                dcc.Dropdown(
-                                                    id="compare-manual",
-                                                    multi=True,
-                                                    style={"display": "none"},
-                                                ),
-                                            ],
-                                            md=3,
-                                        ),
-                                        dbc.Col(
-                                            [
-                                                html.Label("Metric Category"),
-                                                dcc.Dropdown(
-                                                    id="compare-metric-set",
-                                                    options=[
-                                                        {"label": k, "value": k}
-                                                        for k in METRIC_SETS.keys()
-                                                    ],
-                                                    value="Snapshot",
-                                                    clearable=False,
-                                                ),
-                                            ],
-                                            md=3,
-                                        ),
-                                        dbc.Col(
-                                            [
-                                                html.Label("Metric"),
-                                                dcc.Dropdown(
-                                                    id="compare-metric",
-                                                    options=[
-                                                        {"label": metric_label(c), "value": c}
-                                                        for c in METRIC_SETS["Snapshot"]
-                                                    ],
-                                                    value=METRIC_SETS["Snapshot"][0],
-                                                    clearable=False,
-                                                ),
-                                            ],
-                                            md=3,
-                                        ),
-                                    ]
-                                )
-                            ]
-                        ),
-                        className="mb-4",
-                    ),
-                    dcc.Loading(
-                        dcc.Graph(id="compare-chart"),
-                        type="default",
-                    ),
-                ],
-                className="p-3",
-            ),
-        ],
-        className="mt-4",
-    )
-
-    return dbc.Container(
-        [header, snapshot, tabs],
-        fluid=True,
-    )
+    return country, header_text
 
 # endregion
+
 
 # region CALLBACKS
 
@@ -573,9 +543,10 @@ def update_snapshot_kpis(search, store_data):
     Input("ctx-y-dropdown", "value"),
     Input("ctx-checklist", "value"),
     Input("country-df-store", "data"),
+    Input("linked-selection-store", "data"),
 )
-def update_context_scatter(search, x_col, y_col, checklist, store_data):
-    """Update context scatter plot."""
+def update_context_scatter(search, x_col, y_col, checklist, store_data, link_sel):
+    """Update context scatter plot and respond to linked selection state."""
     if not search or not x_col or not y_col:
         return go.Figure().add_annotation(text="No data")
 
@@ -608,24 +579,58 @@ def update_context_scatter(search, x_col, y_col, checklist, store_data):
     y_plot = plot_df[y_col].values
     y_label = metric_label(y_col)
 
+    # default marker aesthetics
+    marker_colors = ["steelblue"] * len(plot_df)
+    marker_sizes = [8] * len(plot_df)
+    marker_opacities = [0.6] * len(plot_df)
+
+    # interpret link state dict (mode/isolation/constraints)
+    sel_isos = set()
+    if link_sel and isinstance(link_sel, dict):
+        s = link_sel.get("isos")
+        if s:
+            sel_isos = set(s)
+    elif link_sel and isinstance(link_sel, (list, set)):
+        sel_isos = set(link_sel)
+
+    if sel_isos:
+        for i, iso in enumerate(plot_df["ISO3"]):
+            if iso in sel_isos:
+                marker_opacities[i] = 0.95
+                marker_sizes[i] = 10
+                marker_colors[i] = "orange"
+            else:
+                marker_opacities[i] = 0.15
+                marker_sizes[i] = 6
+
+    # always highlight the page-selected country
+    if iso3 in plot_df["ISO3"].values:
+        pos = int(np.where(plot_df["ISO3"].values == iso3)[0][0])
+        marker_colors[pos] = "red"
+        marker_sizes[pos] = 14
+        marker_opacities[pos] = 1.0
+
     fig = go.Figure()
 
-    #Add all countries
+    #Add all countries (customdata: [ISO3, raw_x, raw_y])
     fig.add_trace(
         go.Scatter(
             x=x_plot,
             y=y_plot,
             mode="markers",
-            marker=dict(size=8, opacity=0.6, color="steelblue"),
+            marker=dict(size=marker_sizes, opacity=marker_opacities, color=marker_colors),
             text=plot_df["Country"],
-            hovertemplate="<b>%{text}</b><br>" + metric_label(x_col) + ": %{customdata[0]:,.0f}<br>" + metric_label(y_col) + ": %{y:,.1f}<extra></extra>",
-            customdata=np.column_stack([x_data]),
+            hovertemplate="<b>%{text}</b><br>" + metric_label(x_col) + ": %{customdata[1]:,.0f}<br>" + metric_label(y_col) + ": %{customdata[2]:,.1f}<extra></extra>",
+            customdata=np.column_stack([plot_df["ISO3"].astype(str), x_data, y_plot]),
             name="Countries",
         )
     )
 
-    #hghlight selected country - not sure if it works
+    # compute selected page country values for optional residual annotation
     selected_row = plot_df[plot_df["ISO3"] == iso3]
+    sel_x = None
+    sel_y = None
+    sel_x_plot = None
     if not selected_row.empty:
         sel_x = selected_row[x_col].iloc[0]
         sel_y = selected_row[y_col].iloc[0]
@@ -634,40 +639,25 @@ def update_context_scatter(search, x_col, y_col, checklist, store_data):
         else:
             sel_x_plot = sel_x
 
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_x_plot],
-                y=[sel_y],
-                mode="markers",
-                marker=dict(
-                    size=14,
-                    color="red",
-                    line=dict(width=2, color="darkred"),
-                ),
-                text=[selected_row["Country"].iloc[0]],
-                hovertemplate="<b>%{text}</b> (Selected)<extra></extra>",
-                name="Selected",
-            )
-        )
-
-        #add regression line if requested - remove prob, needs error handling
-        if show_regline and len(plot_df) > 2:
-            try:
-                z = np.polyfit(x_plot, y_plot, 1)
-                p = np.poly1d(z)
-                x_line = np.linspace(x_plot.min(), x_plot.max(), 100)
-                y_line = p(x_line)
-                fig.add_trace(
-                    go.Scatter(
-                        x=x_line,
-                        y=y_line,
-                        mode="lines",
-                        line=dict(color="gray", dash="dash"),
-                        name="Trend",
-                    )
+    # add regression/trend for the full set (or filtered visual) if requested
+    if show_regline and len(plot_df) > 2:
+        try:
+            z = np.polyfit(x_plot, y_plot, 1)
+            p = np.poly1d(z)
+            x_line = np.linspace(x_plot.min(), x_plot.max(), 100)
+            y_line = p(x_line)
+            fig.add_trace(
+                go.Scatter(
+                    x=x_line,
+                    y=y_line,
+                    mode="lines",
+                    line=dict(color="gray", dash="dash"),
+                    name="Trend",
                 )
+            )
 
-                # Residual annot
+            # Residual annot if page country available
+            if sel_x_plot is not None and sel_y is not None:
                 residual = sel_y - p(sel_x_plot)
                 fig.add_annotation(
                     x=sel_x_plot,
@@ -681,8 +671,8 @@ def update_context_scatter(search, x_col, y_col, checklist, store_data):
                     ax=30,
                     ay=-30,
                 )
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     fig.update_layout(
         title=f"{y_label} vs {x_label}",
@@ -931,9 +921,9 @@ def update_demo_bars(search, store_data):
     if not metrics_to_plot:
         return go.Figure().add_annotation(text="No data for demographics")
 
-    # Prepare customdata with raw values (2D array for each bar)
-    country_customdata = np.column_stack([country_raw])
-    world_customdata = np.column_stack([world_raw])
+    # Prepare customdata with formatted strings for raw values
+    country_customdata = [[fmt_value(metric, v)] for v in country_raw]
+    world_customdata = [[fmt_value(metric, v)] for v in world_raw]
 
     fig = go.Figure(
         data=[
@@ -942,7 +932,7 @@ def update_demo_bars(search, store_data):
                 x=metrics_to_plot,
                 y=country_norm,
                 marker_color="steelblue",
-                hovertemplate="<b>Country</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]:.2f}<extra></extra>",
+                hovertemplate="<b>Country</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]}<extra></extra>",
                 customdata=country_customdata,
             ),
             go.Bar(
@@ -950,7 +940,7 @@ def update_demo_bars(search, store_data):
                 x=metrics_to_plot,
                 y=world_norm,
                 marker_color="lightslategray",
-                hovertemplate="<b>World Median</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]:.2f}<extra></extra>",
+                hovertemplate="<b>World Median</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]}<extra></extra>",
                 customdata=world_customdata,
             ),
         ]
@@ -1033,9 +1023,9 @@ def update_infra_bars(search, store_data):
     if not metrics_to_plot:
         return go.Figure().add_annotation(text="No data for infrastructure")
 
-    # Prepare customdata with raw values (2D array for each bar)
-    country_customdata = np.column_stack([country_raw])
-    world_customdata = np.column_stack([world_raw])
+    # Prepare customdata with formatted strings for raw values
+    country_customdata = [[fmt_value(metric, v)] for v in country_raw]
+    world_customdata = [[fmt_value(metric, v)] for v in world_raw]
 
     fig = go.Figure(
         data=[
@@ -1044,7 +1034,7 @@ def update_infra_bars(search, store_data):
                 x=metrics_to_plot,
                 y=country_norm,
                 marker_color="mediumseagreen",
-                hovertemplate="<b>Country</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]:.2f}<extra></extra>",
+                hovertemplate="<b>Country</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]}<extra></extra>",
                 customdata=country_customdata,
             ),
             go.Bar(
@@ -1052,7 +1042,7 @@ def update_infra_bars(search, store_data):
                 x=metrics_to_plot,
                 y=world_norm,
                 marker_color="darkseagreen",
-                hovertemplate="<b>World Median</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]:.2f}<extra></extra>",
+                hovertemplate="<b>World Median</b><br>%{x}<br>Normalized: %{y:.2f}<br>Raw: %{customdata[0]}<extra></extra>",
                 customdata=world_customdata,
             ),
         ]
@@ -1216,5 +1206,262 @@ def update_compare_chart(search, method, manual_list, metric, store_data):
 
     return fig
 
-# endregion
 
+PARCOORDS_MAX_LINES = 80  # hard cap for parcoords lines
+@callback(
+    Output("linked-selection-store", "data"),
+    Input("ctx-scatter", "selectedData"),
+    Input("linked-parcoords", "restyleData"),
+    Input("parcoords-metrics", "value"),
+    State("linked-selection-store", "data"),
+    Input("country-df-store", "data"),
+    prevent_initial_call=True,
+)
+def sync_linked_selection(scatter_sel, parcoords_restyle, parcoords_metrics, current_store, store_data):
+    """Sync selection state from scatter selection or parcoords brushing.
+
+    Uses a persistent store dict with keys: mode, isos, constraints
+    """
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
+    prop = ctx.triggered[0]["prop_id"]
+
+    # initialize existing store
+    existing = current_store or {"mode": "none", "isos": None, "constraints": {}}
+
+    # scatter selection -> set explicit isos, clear constraints
+    if prop.startswith("ctx-scatter"):
+        if not scatter_sel or "points" not in scatter_sel or not scatter_sel.get("points"):
+            return {"mode": "none", "isos": None, "constraints": {}}
+        isos = []
+        for p in scatter_sel.get("points", []):
+            cd = p.get("customdata") or []
+            if cd:
+                isos.append(cd[0])
+        return {"mode": "scatter", "isos": isos if isos else None, "constraints": {}}
+
+    # parcoords restyle -> merge constraints incrementally
+    if prop.startswith("linked-parcoords"):
+        rd = parcoords_restyle
+        metrics = parcoords_metrics or []
+        if not rd or not isinstance(rd, list):
+            raise dash.exceptions.PreventUpdate
+        restyle = rd[0]
+        # copy existing constraints to merge into
+        merged = dict(existing.get("constraints", {}))
+        changed = False
+        for k, v in restyle.items():
+            m = re.search(r"dimensions\[(\d+)\]\.constraintrange", k)
+            if not m:
+                continue
+            idx = int(m.group(1))
+            # value may be [] (clear), [min,max], or [[min,max],..]
+            val = v[0] if isinstance(v, list) and len(v) > 0 else v
+            # if val is empty list or None -> clear this constraint
+            if val is None or (isinstance(val, list) and len(val) == 0):
+                if str(idx) in merged:
+                    merged.pop(str(idx), None)
+                    changed = True
+                continue
+            # normalize to list-of-pairs
+            if isinstance(val[0], (list, tuple)):
+                pairs = [list(x) for x in val]
+            else:
+                pairs = [list(val)]
+            merged[str(idx)] = pairs
+            changed = True
+
+        if not changed:
+            # nothing useful changed
+            raise dash.exceptions.PreventUpdate
+
+        # compute matching ISO3s from df
+        df = _get_df_from_store(store_data)
+        mask = pd.Series(True, index=df.index)
+        for idx_str, pairs in merged.items():
+            idx = int(idx_str)
+            if idx >= len(metrics):
+                # can't map this constraint to a column
+                continue
+            col = metrics[idx]
+            if col not in df.columns:
+                mask &= False
+                continue
+            col_vals = pd.to_numeric(df[col], errors="coerce")
+            col_mask = pd.Series(False, index=df.index)
+            for low, high in pairs:
+                col_mask |= col_vals.between(low, high, inclusive="both")
+            mask &= col_mask
+        isos = df.loc[mask, "ISO3"].dropna().tolist()
+        mode = "parcoords" if merged else "none"
+        return {"mode": mode, "isos": isos if isos else None, "constraints": merged}
+
+    # unknown trigger
+    raise dash.exceptions.PreventUpdate
+
+
+
+@callback(
+    Output("linked-parcoords", "figure"),
+    Input("url", "search"),
+    Input("country-df-store", "data"),
+    Input("linked-selection-store", "data"),
+    Input("parcoords-metrics", "value"),
+)
+def update_linked_parcoords(search, store_data, link_state, metrics):
+    """Build parallel coordinates plot responding to the current selection, with line cap."""
+    if not search:
+        return go.Figure().add_annotation(text="No data")
+    if not metrics:
+        return go.Figure().add_annotation(text="No metrics selected")
+
+    df = _get_df_from_store(store_data)
+    metrics = [m for m in metrics if m in df.columns][:PARCOORDS_MAX]
+    if not metrics:
+        return go.Figure().add_annotation(text="No valid metrics")
+
+    subset = df.copy()
+    # if selection via store exists, filter to those isos
+    sel_isos = set(link_state.get("isos", [])) if link_state and link_state.get("isos") else set()
+    qs = urllib.parse.parse_qs(search.lstrip("?"))
+    iso3 = qs.get("iso3", [None])[0]
+
+    # Always keep the page country, and selected isos, then sample the rest
+    keep_isos = set()
+    if iso3:
+        keep_isos.add(iso3)
+    keep_isos.update(sel_isos)
+
+    subset = subset.dropna(subset=metrics)
+    if subset.empty:
+        return go.Figure().add_annotation(text="No data for selected metrics / selection")
+
+    # Partition rows: always keep page country, then selected, then sample rest
+    keep_rows = subset[subset["ISO3"].isin(keep_isos)]
+    rest_rows = subset[~subset["ISO3"].isin(keep_isos)]
+    n_keep = len(keep_rows)
+    n_sample = max(PARCOORDS_MAX_LINES - n_keep, 0)
+    if n_sample > 0 and len(rest_rows) > n_sample:
+        rest_rows = rest_rows.sample(n=n_sample, random_state=0)
+    subset_capped = pd.concat([keep_rows, rest_rows], axis=0)
+
+    # Recompute dims for capped subset
+    dims = []
+    for m in metrics:
+        vals = pd.to_numeric(subset_capped[m], errors="coerce")
+        if vals.dropna().empty:
+            continue
+        dims.append({"label": metric_label(m), "values": vals})
+
+    if not dims:
+        return go.Figure().add_annotation(text="No numeric metrics available")
+
+    # Color: 2=page country, 1=selected, 0=other
+    colors = []
+    for iso in subset_capped["ISO3"]:
+        if iso == iso3:
+            colors.append(2)
+        elif iso in sel_isos:
+            colors.append(1)
+        else:
+            colors.append(0)
+
+    colorscale = [[0, "#444444"], [0.5, "steelblue"], [1, "crimson"]]
+
+    fig = go.Figure(
+        go.Parcoords(
+            line=dict(color=colors, colorscale=colorscale, cmin=0, cmax=2),
+            dimensions=dims,
+        )
+    )
+
+    fig.update_layout(
+        title=f"Parallel Coordinates (showing up to {PARCOORDS_MAX_LINES} lines)",
+        height=500,
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+
+    return fig
+
+
+# Dynamic parcoords options
+@callback(
+    Output("parcoords-metrics", "options"),
+    Output("parcoords-metrics", "value"),
+    Input("country-df-store", "data"),
+)
+def _update_parcoords_options(store_data):
+    df = _get_df_from_store(store_data)
+    candidate_cols = list(dict.fromkeys(ECON_COLS + SOCIAL_COLS + INFRA_COLS + RADAR_METRICS + DEMO_PRESSURE_COLS + LEADERBOARD_METRICS))
+    options = []
+    available = []
+    for c in candidate_cols:
+        if c in df.columns:
+            vals = pd.to_numeric(df[c], errors="coerce").dropna()
+            if not vals.empty:
+                options.append({"label": metric_label(c), "value": c})
+                available.append(c)
+
+    # choose default value as intersection of PARCOORDS_DEFAULT and available, preserving order
+    default_vals = [c for c in PARCOORDS_DEFAULT if c in available]
+    # Reduce default metric count to 5 (or 6 if you prefer)
+    DEFAULT_PARCOORDS_METRIC_COUNT = 5
+    if default_vals:
+        value = default_vals[:DEFAULT_PARCOORDS_METRIC_COUNT]
+    else:
+        value = [opt["value"] for opt in options[:DEFAULT_PARCOORDS_METRIC_COUNT]] if options else []
+
+    return options, value
+
+
+@callback(
+    Output("parcoords-warning", "children"),
+    Input("parcoords-metrics", "value"),
+)
+def _parcoords_warning(metrics):
+    if not metrics:
+        return ""
+    if len(metrics) > PARCOORDS_MAX:
+        return f"Max {PARCOORDS_MAX} metrics — extra selections ignored."
+    return ""
+
+
+@callback(
+    Output("linked-selection-summary", "children"),
+    Input("linked-selection-store", "data"),
+    Input("url", "search"),
+    Input("country-df-store", "data"),
+    Input("ctx-x-dropdown", "value"),
+    Input("ctx-y-dropdown", "value"),
+)
+def update_linked_selection_summary(sel_store, search, store_data, xcol, ycol):
+    """Show compact selection summary and simple medians for selected subset."""
+    if not search:
+        return ""
+    df = _get_df_from_store(store_data)
+
+    sel_isos = set(sel_store.get("isos", [])) if sel_store and sel_store.get("isos") else None
+
+    if not sel_isos:
+        return html.Small("No selection; showing all countries.")
+
+    sel_df = df[df["ISO3"].isin(sel_isos)]
+    count = len(sel_df)
+
+    sel_x_median = world_stat(sel_df, xcol, how="median")
+    sel_y_median = world_stat(sel_df, ycol, how="median")
+    world_x = world_stat(df, xcol, how="median")
+    world_y = world_stat(df, ycol, how="median")
+
+    return html.Div([
+        html.Small(f"Selected: {count} countries"),
+        html.Br(),
+        html.Small(f"Median {metric_label(xcol)}: {fmt_value(xcol, sel_x_median)} (World: {fmt_value(xcol, world_x)})"),
+        html.Br(),
+        html.Small(f"Median {metric_label(ycol)}: {fmt_value(ycol, sel_y_median)} (World: {fmt_value(ycol, world_y)})"),
+    ])
+
+# endregion

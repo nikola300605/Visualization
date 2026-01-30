@@ -3,8 +3,10 @@ import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from dash import dcc, html, callback, Input, Output
 from src.data_loading.load_data import load_data_into_df
+from src.components.filter import get_label
 
 dash.register_page(__name__, path="/global", name="Global", order=1)
 
@@ -87,6 +89,18 @@ CORR_COLS = [
     "Infant_Mortality_Rate",
     "Total_Fertility_Rate",
     "Median_Age",
+]
+
+# Default columns to use in parallel coordinates plots across pages could lunc hteh app otherwise
+PARALLEL_COORD_COLS = [
+    "Real_GDP_per_Capita_USD",
+    "Human_Development_Index_(value)",
+    "Life_Expectancy_at_Birth_(years)",
+    "Infant_Mortality_Rate",
+    "Total_Fertility_Rate",
+    "internet_penetration_rate",
+    "road_density_log",
+    "Population_Below_Poverty_Line_percent",
 ]
 
 if not ECON_COLS:
