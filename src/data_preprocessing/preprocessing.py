@@ -3,7 +3,6 @@ import pandas as pd
 from thefuzz import process
 import pycountry
 from src.data_preprocessing.mappings import country_map
-from src.data_preprocessing.regions import add_region_column
 import re
 import numpy as np
 from dateutil.parser import parse

@@ -1,6 +1,7 @@
 from src.data_preprocessing.preprocessing import load_data, load_external_data, clean_country_names, merge_data, clean_demographics_data, clean_economy_data, clean_geography_data, clean_government_data, clean_transportation_data, derive_new_metrics, clean_communications_data
 from src.components.clustering import create_development_clusters_with_analysis, create_development_clusters_without_analysis
 import pandas as pd
+from src.data_preprocessing.regions import add_region_column
 
 def load_data_into_df():
     cluster_map = {
@@ -38,7 +39,7 @@ def load_data_into_df():
 
     merged_data = merged_data[~removed_countries]
 
-
+    merged_data = add_region_column(merged_data)
     merged_data = clean_country_names(merged_data)
     merged_data = merged_data.drop(columns=["Population_Growth_Rate [%]"])
 
@@ -57,6 +58,7 @@ def load_data_into_df():
 
     merged_data['Cluster_numeric'] = merged_data['Cluster']
     merged_data['Cluster'] = merged_data['Cluster'].map(cluster_map)
+    
 
     return merged_data
 
